@@ -10,6 +10,16 @@ import structlog
 from anthropic import Anthropic
 import os
 import json
+import sys
+
+# Add tools directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+
+try:
+    from gateway_api_client import HummingbotGatewayClient
+    GATEWAY_CLIENT_AVAILABLE = True
+except ImportError:
+    GATEWAY_CLIENT_AVAILABLE = False
 
 logger = structlog.get_logger()
 
@@ -103,6 +113,23 @@ class BaseAgent(ABC):
         # Agent-specific settings
         self.timeout = config.get('timeout_seconds', 60)
         self.retry_attempts = config.get('retry_attempts', 3)
+
+        # Initialize Gateway API client for Hummingbot integration
+        self.gateway_enabled = config.get('gateway_enabled', True)
+        self.gateway_client = None
+        if self.gateway_enabled and GATEWAY_CLIENT_AVAILABLE:
+            gateway_url = config.get('hummingbot_gateway_url', 'http://localhost:8000')
+            gateway_username = config.get('hummingbot_username')
+            gateway_password = config.get('hummingbot_password')
+            self.gateway_client = HummingbotGatewayClient(
+                gateway_url=gateway_url,
+                username=gateway_username,
+                password=gateway_password
+            )
+            self.logger.info("gateway_client_initialized", gateway_url=gateway_url, auth_enabled=bool(gateway_username and gateway_password))
+        elif self.gateway_enabled and not GATEWAY_CLIENT_AVAILABLE:
+            self.logger.warning("gateway_client_not_available",
+                               message="Gateway client requested but not available")
 
         self.logger.info("agent_initialized", config=self.config)
 
@@ -364,6 +391,153 @@ Please analyze the current state and provide your output.
         })
 
         return state
+
+    # ===== Gateway API Methods =====
+
+    async def hb_place_order(
+        self,
+        connector: str,
+        trading_pair: str,
+        side: str,
+        amount: float,
+        order_type: str = "market",
+        price: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Place order via Hummingbot Gateway API.
+
+        Args:
+            connector: Exchange connector (e.g., 'oanda')
+            trading_pair: Trading pair (e.g., 'GBP/USD')
+            side: 'buy' or 'sell'
+            amount: Position size
+            order_type: 'market' or 'limit'
+            price: Limit price (for limit orders)
+
+        Returns:
+            Order result from Hummingbot
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        self.logger.info("placing_order_via_gateway",
+                        connector=connector,
+                        pair=trading_pair,
+                        side=side,
+                        amount=amount)
+
+        return await self.gateway_client.place_order(
+            connector=connector,
+            trading_pair=trading_pair,
+            side=side,
+            amount=amount,
+            order_type=order_type,
+            price=price
+        )
+
+    async def hb_get_balance(self, connector: str) -> Dict[str, Any]:
+        """
+        Get account balance via Hummingbot Gateway API.
+
+        Args:
+            connector: Exchange connector
+
+        Returns:
+            Balance information
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.get_balance(connector)
+
+    async def hb_get_positions(
+        self,
+        connector: str,
+        trading_pair: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get open positions via Hummingbot Gateway API.
+
+        Args:
+            connector: Exchange connector
+            trading_pair: Optional filter by trading pair
+
+        Returns:
+            Positions information
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.get_positions(connector, trading_pair)
+
+    async def hb_close_position(
+        self,
+        connector: str,
+        trading_pair: str,
+        amount: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Close position via Hummingbot Gateway API.
+
+        Args:
+            connector: Exchange connector
+            trading_pair: Trading pair
+            amount: Amount to close (None = close all)
+
+        Returns:
+            Close result
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.close_position(connector, trading_pair, amount)
+
+    async def hb_check_gateway_status(self) -> Dict[str, Any]:
+        """
+        Check Hummingbot Gateway health via Gateway API.
+
+        Returns:
+            Gateway status
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.check_gateway_status()
+
+    async def hb_check_connector_status(self, connector: str) -> Dict[str, Any]:
+        """
+        Check connector availability via Gateway API.
+
+        Args:
+            connector: Connector name
+
+        Returns:
+            Connector status
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.check_connector_status(connector)
+
+    async def hb_get_market_data(
+        self,
+        connector: str,
+        trading_pair: str
+    ) -> Dict[str, Any]:
+        """
+        Get market data via Gateway API.
+
+        Args:
+            connector: Exchange connector
+            trading_pair: Trading pair
+
+        Returns:
+            Market data
+        """
+        if not self.gateway_client:
+            raise RuntimeError("Gateway client not initialized")
+
+        return await self.gateway_client.get_market_data(connector, trading_pair)
 
 
 class AgentResponse(TypedDict):

@@ -26,6 +26,7 @@ class EntryExecutionAgent(BaseAgent):
         self.entry_offset_ticks = config.get('agent_config', {}).get('entry_execution', {}).get('entry_offset_ticks', 2)
         self.max_attempts = config.get('agent_config', {}).get('entry_execution', {}).get('max_entry_attempts', 3)
         self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:15888')
+        self.connector = config.get('connector', 'oanda')
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
         """
@@ -245,56 +246,95 @@ class EntryExecutionAgent(BaseAgent):
         return stop_loss
 
     async def _execute_entry_order(
-        self,
-        setup: Dict[str, Any],
-        entry_trigger: Dict[str, Any],
-        position_data: Dict[str, Any],
-        state: TradingState
-    ) -> Dict[str, Any]:
-        """
-        Execute entry order via Hummingbot API.
+         self,
+         setup: Dict[str, Any],
+         entry_trigger: Dict[str, Any],
+         position_data: Dict[str, Any],
+         state: TradingState
+     ) -> Dict[str, Any]:
+         """
+         Execute entry order via Hummingbot Gateway API.
 
-        Args:
-            setup: Setup configuration
-            entry_trigger: Entry trigger
-            position_data: Position sizing data
-            state: Trading state
+         Args:
+             setup: Setup configuration
+             entry_trigger: Entry trigger
+             position_data: Position sizing data
+             state: Trading state
 
-        Returns:
-            Order execution result
-        """
-        try:
-            # TODO: Implement actual Hummingbot API call
-            import aiohttp
+         Returns:
+             Order execution result
+         """
+         try:
+             # Prepare order parameters
+             side = 'buy' if setup['direction'] == 'long' else 'sell'
+             order_type = 'limit' if self.use_limit_orders else 'market'
+             amount = position_data['position_size_lots']
+             price = entry_trigger['entry_price'] if self.use_limit_orders else None
 
-            order_params = {
-                'connector': 'oanda',  # Or configured broker
-                'trading_pair': state['instrument'],
-                'side': 'buy' if setup['direction'] == 'long' else 'sell',
-                'amount': position_data['position_size_lots'],
-                'order_type': 'limit' if self.use_limit_orders else 'market',
-                'price': entry_trigger['entry_price'] if self.use_limit_orders else None
-            }
+             self.logger.info("placing_order_via_gateway",
+                            connector=self.connector,
+                            trading_pair=state['instrument'],
+                            side=side,
+                            amount=amount,
+                            order_type=order_type,
+                            price=price)
 
-            self.logger.info("placing_order", **order_params)
+             # Use Gateway API to place order
+             if self.gateway_client:
+                 result = await self.hb_place_order(
+                     connector=self.connector,
+                     trading_pair=state['instrument'],
+                     side=side,
+                     amount=amount,
+                     order_type=order_type,
+                     price=price
+                 )
 
-            # Mock successful order
-            # In production, make actual API call:
-            # async with aiohttp.ClientSession() as session:
-            #     async with session.post(f"{self.hummingbot_url}/create_order", json=order_params) as resp:
-            #         result = await resp.json()
+                 # Parse gateway API result
+                 if result.get('status') == 'executed':
+                     order_id = result.get('order', {}).get('orderId', result.get('order', {}).get('id', 'UNKNOWN'))
+                     return {
+                         'success': True,
+                         'order_id': order_id,
+                         'connector': self.connector,
+                         'trading_pair': state['instrument'],
+                         'side': side,
+                         'amount': amount,
+                         'order_type': order_type,
+                         'execution_price': entry_trigger['entry_price'],
+                         'timestamp': datetime.utcnow().isoformat(),
+                         'gateway_response': result
+                     }
+                 else:
+                     # Error from gateway
+                     self.logger.error("gateway_order_failed",
+                                     status=result.get('status'),
+                                     error=result.get('error'))
+                     return {
+                         'success': False,
+                         'error': result.get('error', 'Unknown gateway error'),
+                         'gateway_response': result
+                     }
+             else:
+                 # Fallback to mock if gateway not available
+                 self.logger.warning("gateway_not_available",
+                                   message="Using mock order result")
+                 return {
+                     'success': True,
+                     'order_id': 'ORDER-MOCK-12345',
+                     'connector': self.connector,
+                     'trading_pair': state['instrument'],
+                     'side': side,
+                     'amount': amount,
+                     'order_type': order_type,
+                     'execution_price': entry_trigger['entry_price'],
+                     'timestamp': datetime.utcnow().isoformat(),
+                     'gateway_mode': 'disabled'
+                 }
 
-            return {
-                'success': True,
-                'order_id': 'ORDER-12345',
-                'order_params': order_params,
-                'execution_price': entry_trigger['entry_price'],
-                'timestamp': datetime.utcnow().isoformat()
-            }
-
-        except Exception as e:
-            self.logger.error("order_execution_failed", error=str(e))
-            return {
-                'success': False,
-                'error': str(e)
-            }
+         except Exception as e:
+             self.logger.error("order_execution_failed", error=str(e))
+             return {
+                 'success': False,
+                 'error': str(e)
+             }

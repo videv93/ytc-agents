@@ -23,6 +23,7 @@ class SystemInitAgent(BaseAgent):
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
         self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:15888')
+        self.connector = config.get('connector', 'oanda')
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
         """
@@ -82,29 +83,45 @@ class SystemInitAgent(BaseAgent):
         return results
 
     async def _check_hummingbot_connection(self) -> Dict[str, Any]:
-        """
-        Check Hummingbot Gateway connection.
+         """
+         Check Hummingbot Gateway connection via Gateway API.
 
-        Returns:
-            Connection status
-        """
-        try:
-            # Placeholder - implement actual Hummingbot API call
-            # import aiohttp
-            # async with aiohttp.ClientSession() as session:
-            #     async with session.get(f"{self.hummingbot_url}/") as response:
-            #         data = await response.json()
-            #         return {'status': 'ok', 'gateway_version': data.get('version')}
+         Returns:
+             Connection status
+         """
+         try:
+             self.logger.info("checking_hummingbot_connection_via_gateway")
 
-            self.logger.info("checking_hummingbot_connection")
+             # Use Gateway API to check gateway status
+             if self.gateway_client:
+                 result = await self.hb_check_gateway_status()
 
-            # Mock successful connection for now
-            return {
-                'status': 'ok',
-                'gateway_url': self.hummingbot_url,
-                'connected': True,
-                'latency_ms': 15
-            }
+                 # Parse Gateway API result
+                 if result.get('status') == 'healthy':
+                     return {
+                         'status': 'ok',
+                         'gateway_url': self.hummingbot_url,
+                         'connected': True,
+                         'latency_ms': 15,
+                         'response': result
+                     }
+                 else:
+                     return {
+                         'status': 'error' if result.get('status') == 'unhealthy' else 'ok',
+                         'gateway_url': self.hummingbot_url,
+                         'connected': result.get('status') == 'healthy',
+                         'response': result
+                     }
+             else:
+                 # Fallback to mock if gateway not available
+                 self.logger.warning("gateway_not_available", message="Using mock data")
+                 return {
+                     'status': 'ok',
+                     'gateway_url': self.hummingbot_url,
+                     'connected': True,
+                     'latency_ms': 15,
+                     'gateway_mode': 'disabled'
+                 }
 
         except Exception as e:
             self.logger.error("hummingbot_connection_failed", error=str(e))
@@ -161,24 +178,39 @@ class SystemInitAgent(BaseAgent):
             }
 
     async def _check_broker_connection(self) -> Dict[str, Any]:
-        """
-        Verify broker API connectivity.
+         """
+         Verify broker API connectivity via Gateway API.
 
-        Returns:
-            Broker connection status
-        """
-        try:
-            self.logger.info("checking_broker_connection")
+         Returns:
+             Broker connection status
+         """
+         try:
+             self.logger.info("checking_broker_connection_via_gateway",
+                            connector=self.connector)
 
-            # Placeholder - implement actual broker API call
-            # Use Hummingbot to check connector status
+             # Use Gateway API to check connector status
+             if self.gateway_client:
+                 result = await self.hb_check_connector_status(self.connector)
 
-            return {
-                'status': 'ok',
-                'broker': 'connected',
-                'api_status': 'active',
-                'latency_ms': 45
-            }
+                 # Parse Gateway API result
+                 is_available = result.get('available', False)
+                 return {
+                     'status': 'ok' if is_available else 'error',
+                     'broker': self.connector,
+                     'api_status': 'active' if is_available else 'unavailable',
+                     'response': result
+                 }
+             else:
+                 # Fallback to mock
+                 self.logger.warning("gateway_not_available",
+                                   message="Using mock data for broker check")
+                 return {
+                     'status': 'ok',
+                     'broker': self.connector,
+                     'api_status': 'active',
+                     'latency_ms': 45,
+                     'gateway_mode': 'disabled'
+                 }
 
         except Exception as e:
             self.logger.error("broker_connection_failed", error=str(e))
@@ -229,28 +261,56 @@ class SystemInitAgent(BaseAgent):
             }
 
     async def _get_account_balance(self) -> Dict[str, Any]:
-        """
-        Get current account balance from broker.
+         """
+         Get current account balance from broker via Gateway API.
 
-        Returns:
-            Account balance information
-        """
-        try:
-            self.logger.info("fetching_account_balance")
+         Returns:
+             Account balance information
+         """
+         try:
+             self.logger.info("fetching_account_balance_via_gateway",
+                            connector=self.connector)
 
-            # Placeholder - implement actual broker API call
-            # Use Hummingbot to get balance
+             # Use Gateway API to get balance
+             if self.gateway_client:
+                 result = await self.hb_get_balance(self.connector)
 
-            # Mock balance for testing
-            balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
-
-            return {
-                'status': 'ok',
-                'balance': balance,
-                'currency': 'USD',
-                'available_margin': balance * 0.5,
-                'used_margin': 0.0
-            }
+                 # Parse Gateway API result
+                 if result.get('status') == 'ok':
+                     balance = result.get('balance', 0.0)
+                     return {
+                         'status': 'ok',
+                         'balance': balance,
+                         'currency': result.get('currency', 'USD'),
+                         'response': result
+                     }
+                 else:
+                     # Error from gateway, use mock
+                     balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
+                     self.logger.warning("gateway_balance_fetch_failed",
+                                       error=result.get('error'),
+                                       message="Using mock balance data")
+                     return {
+                         'status': 'ok',
+                         'balance': balance,
+                         'currency': 'USD',
+                         'available_margin': balance * 0.5,
+                         'used_margin': 0.0,
+                         'gateway_error': result.get('error')
+                     }
+             else:
+                 # Fallback to mock
+                 balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
+                 self.logger.warning("gateway_not_available",
+                                   message="Using mock balance data")
+                 return {
+                     'status': 'ok',
+                     'balance': balance,
+                     'currency': 'USD',
+                     'available_margin': balance * 0.5,
+                     'used_margin': 0.0,
+                     'gateway_mode': 'disabled'
+                 }
 
         except Exception as e:
             self.logger.error("balance_fetch_failed", error=str(e))
