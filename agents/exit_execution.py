@@ -24,6 +24,7 @@ class ExitExecutionAgent(BaseAgent):
         super().__init__(agent_id, config)
         self.exit_types = config.get('agent_config', {}).get('exit_execution', {}).get('exit_types', ['target', 'stop', 'time', 'signal'])
         self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:15888')
+        self.connector = config.get('connector', 'oanda')
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
         """
@@ -233,7 +234,7 @@ class ExitExecutionAgent(BaseAgent):
         state: TradingState
     ) -> Dict[str, Any]:
         """
-        Execute exit order via Hummingbot API.
+        Execute exit order via Hummingbot MCP.
 
         Args:
             position: Position to exit
@@ -244,27 +245,74 @@ class ExitExecutionAgent(BaseAgent):
             Execution result
         """
         try:
-            # TODO: Implement actual Hummingbot API call
-            order_params = {
-                'connector': 'oanda',
-                'trading_pair': state['instrument'],
-                'side': 'sell' if position['direction'] == 'long' else 'buy',
-                'amount': position['position_size_lots'],
-                'order_type': 'market'
-            }
+            # Prepare exit parameters
+            side = 'sell' if position['direction'] == 'long' else 'buy'
+            amount = position['position_size_lots']
 
-            self.logger.info("executing_exit", **exit_decision)
+            self.logger.info("executing_exit_via_mcp",
+                           connector=self.connector,
+                           trading_pair=state['instrument'],
+                           side=side,
+                           amount=amount,
+                           exit_type=exit_decision['exit_type'])
 
-            # Mock successful exit
-            return {
-                'success': True,
-                'position_id': position.get('id'),
-                'exit_type': exit_decision['exit_type'],
-                'exit_price': exit_decision.get('exit_price'),
-                'reason': exit_decision['reason'],
-                'order_id': 'EXIT-12345',
-                'timestamp': datetime.utcnow().isoformat()
-            }
+            # Use MCP to close position
+            if self.mcp_client:
+                result = await self.hb_close_position(
+                    connector=self.connector,
+                    trading_pair=state['instrument'],
+                    amount=amount
+                )
+
+                # Parse MCP result
+                if result.get('status') == 'would_execute':
+                    # MCP server not running, use mock
+                    self.logger.warning("mcp_server_not_running",
+                                      message="Using mock exit result")
+                    return {
+                        'success': True,
+                        'position_id': position.get('id'),
+                        'exit_type': exit_decision['exit_type'],
+                        'exit_price': exit_decision.get('exit_price'),
+                        'reason': exit_decision['reason'],
+                        'order_id': 'EXIT-MOCK-12345',
+                        'connector': self.connector,
+                        'trading_pair': state['instrument'],
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'mcp_mode': 'mock'
+                    }
+                else:
+                    # Real MCP response
+                    order_id = result.get('orderId', result.get('id', 'UNKNOWN'))
+                    return {
+                        'success': True,
+                        'position_id': position.get('id'),
+                        'exit_type': exit_decision['exit_type'],
+                        'exit_price': exit_decision.get('exit_price'),
+                        'reason': exit_decision['reason'],
+                        'order_id': order_id,
+                        'connector': self.connector,
+                        'trading_pair': state['instrument'],
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'mcp_mode': 'live',
+                        'mcp_response': result
+                    }
+            else:
+                # Fallback to mock if MCP not available
+                self.logger.warning("mcp_not_available",
+                                  message="Using mock exit result")
+                return {
+                    'success': True,
+                    'position_id': position.get('id'),
+                    'exit_type': exit_decision['exit_type'],
+                    'exit_price': exit_decision.get('exit_price'),
+                    'reason': exit_decision['reason'],
+                    'order_id': 'EXIT-MOCK-12345',
+                    'connector': self.connector,
+                    'trading_pair': state['instrument'],
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'mcp_mode': 'disabled'
+                }
 
         except Exception as e:
             self.logger.error("exit_execution_failed", error=str(e))

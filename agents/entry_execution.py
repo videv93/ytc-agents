@@ -26,6 +26,7 @@ class EntryExecutionAgent(BaseAgent):
         self.entry_offset_ticks = config.get('agent_config', {}).get('entry_execution', {}).get('entry_offset_ticks', 2)
         self.max_attempts = config.get('agent_config', {}).get('entry_execution', {}).get('max_entry_attempts', 3)
         self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:15888')
+        self.connector = config.get('connector', 'oanda')
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
         """
@@ -252,7 +253,7 @@ class EntryExecutionAgent(BaseAgent):
         state: TradingState
     ) -> Dict[str, Any]:
         """
-        Execute entry order via Hummingbot API.
+        Execute entry order via Hummingbot MCP.
 
         Args:
             setup: Setup configuration
@@ -264,33 +265,80 @@ class EntryExecutionAgent(BaseAgent):
             Order execution result
         """
         try:
-            # TODO: Implement actual Hummingbot API call
-            import aiohttp
+            # Prepare order parameters
+            side = 'buy' if setup['direction'] == 'long' else 'sell'
+            order_type = 'limit' if self.use_limit_orders else 'market'
+            amount = position_data['position_size_lots']
+            price = entry_trigger['entry_price'] if self.use_limit_orders else None
 
-            order_params = {
-                'connector': 'oanda',  # Or configured broker
-                'trading_pair': state['instrument'],
-                'side': 'buy' if setup['direction'] == 'long' else 'sell',
-                'amount': position_data['position_size_lots'],
-                'order_type': 'limit' if self.use_limit_orders else 'market',
-                'price': entry_trigger['entry_price'] if self.use_limit_orders else None
-            }
+            self.logger.info("placing_order_via_mcp",
+                           connector=self.connector,
+                           trading_pair=state['instrument'],
+                           side=side,
+                           amount=amount,
+                           order_type=order_type,
+                           price=price)
 
-            self.logger.info("placing_order", **order_params)
+            # Use MCP to place order
+            if self.mcp_client:
+                result = await self.hb_place_order(
+                    connector=self.connector,
+                    trading_pair=state['instrument'],
+                    side=side,
+                    amount=amount,
+                    order_type=order_type,
+                    price=price
+                )
 
-            # Mock successful order
-            # In production, make actual API call:
-            # async with aiohttp.ClientSession() as session:
-            #     async with session.post(f"{self.hummingbot_url}/create_order", json=order_params) as resp:
-            #         result = await resp.json()
-
-            return {
-                'success': True,
-                'order_id': 'ORDER-12345',
-                'order_params': order_params,
-                'execution_price': entry_trigger['entry_price'],
-                'timestamp': datetime.utcnow().isoformat()
-            }
+                # Parse MCP result
+                if result.get('status') == 'would_execute':
+                    # MCP server not running, use mock
+                    self.logger.warning("mcp_server_not_running",
+                                      message="Using mock order result")
+                    return {
+                        'success': True,
+                        'order_id': 'ORDER-MOCK-12345',
+                        'connector': self.connector,
+                        'trading_pair': state['instrument'],
+                        'side': side,
+                        'amount': amount,
+                        'order_type': order_type,
+                        'execution_price': entry_trigger['entry_price'],
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'mcp_mode': 'mock'
+                    }
+                else:
+                    # Real MCP response
+                    order_id = result.get('orderId', result.get('id', 'UNKNOWN'))
+                    return {
+                        'success': True,
+                        'order_id': order_id,
+                        'connector': self.connector,
+                        'trading_pair': state['instrument'],
+                        'side': side,
+                        'amount': amount,
+                        'order_type': order_type,
+                        'execution_price': entry_trigger['entry_price'],
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'mcp_mode': 'live',
+                        'mcp_response': result
+                    }
+            else:
+                # Fallback to mock if MCP not available
+                self.logger.warning("mcp_not_available",
+                                  message="Using mock order result")
+                return {
+                    'success': True,
+                    'order_id': 'ORDER-MOCK-12345',
+                    'connector': self.connector,
+                    'trading_pair': state['instrument'],
+                    'side': side,
+                    'amount': amount,
+                    'order_type': order_type,
+                    'execution_price': entry_trigger['entry_price'],
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'mcp_mode': 'disabled'
+                }
 
         except Exception as e:
             self.logger.error("order_execution_failed", error=str(e))

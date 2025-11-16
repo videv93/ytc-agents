@@ -4,6 +4,9 @@ langchain-core>=0.1.23
 langchain-anthropic>=0.1.4
 anthropic>=0.18.1
 
+# MCP Integration for Hummingbot
+mcp>=1.0.0
+
 # Data Validation & Configuration
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
