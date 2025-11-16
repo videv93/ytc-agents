@@ -1,0 +1,32 @@
+# YTC Trading System - Session Configuration
+
+market: forex
+instrument: GBP/USD
+
+# Timeframes for multi-timeframe analysis
+timeframes:
+  higher: 30min      # For market structure
+  trading: 3min      # For trend definition and entries
+  lower: 1min        # For entry timing
+
+# Session timing
+session:
+  start_time: "09:30:00"
+  duration_hours: 3
+  timezone: America/New_York
+
+# Market hours (for validation)
+market_hours:
+  forex:
+    sunday_open: "17:00:00"
+    friday_close: "17:00:00"
+
+# Trading windows (optimal trading times)
+trading_windows:
+  - name: "London Open"
+    start: "03:00:00"
+    end: "06:00:00"
+
+  - name: "New York Open"
+    start: "09:30:00"
+    end: "12:30:00"

@@ -1,0 +1,31 @@
+# YTC Trading System - Risk Management Configuration
+
+# Position Risk
+risk_per_trade_pct: 1.0           # Risk 1% per trade
+max_session_risk_pct: 3.0         # Max 3% session loss
+max_total_exposure_pct: 3.0       # Max 3% total exposure
+
+# Position Limits
+max_positions: 3                  # Maximum simultaneous positions
+max_position_size_lots: 10.0      # Maximum position size in lots
+
+# Loss Limits
+consecutive_loss_limit: 5         # Stop after 5 consecutive losses
+daily_loss_limit_pct: 5.0        # Hard stop at 5% daily loss
+
+# Correlation
+correlation_threshold: 0.7        # Don't trade correlated pairs
+check_correlation: true
+
+# Time-based Limits
+max_trade_duration_hours: 4       # Auto-exit after 4 hours
+max_session_trades: 20            # Max trades per session
+
+# Emergency Protocols
+emergency_exit_on_connection_loss: true
+emergency_exit_timeout_seconds: 30
+flatten_on_session_stop: true
+
+# Risk Calculation Settings
+allow_partial_contracts: false    # Round to full contracts
+strict_mode: true                 # Enforce all limits strictly

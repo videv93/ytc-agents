@@ -1,0 +1,141 @@
+# YTC Trading System - Agent Configuration
+
+# Global Agent Settings
+global:
+  timeout_seconds: 60
+  retry_attempts: 3
+  log_level: INFO
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+
+# Individual Agent Configuration
+agents:
+
+  # Master Orchestrator
+  master_orchestrator:
+    enabled: true
+    max_concurrent_agents: 5
+    health_check_interval: 10
+
+  # System Initialization
+  system_init:
+    enabled: true
+    connection_timeout: 10
+    max_retries: 3
+
+  # Risk Management
+  risk_management:
+    enabled: true
+    strict_mode: true
+    allow_partial_contracts: false
+    recalculate_on_balance_change: true
+
+  # Market Structure
+  market_structure:
+    enabled: true
+    lookback_bars: 100
+    swing_bars: 3
+    zone_tolerance_pct: 0.1
+
+  # Economic Calendar
+  economic_calendar:
+    enabled: true
+    news_api_url: ""
+    filter_high_impact: true
+    stop_trading_minutes_before: 5
+    resume_trading_minutes_after: 5
+
+  # Trend Definition
+  trend_definition:
+    enabled: true
+    swing_bars: 3
+    confirmation_bars: 2
+    min_trend_strength: 60
+
+  # Strength & Weakness
+  strength_weakness:
+    enabled: true
+    lookback_bars: 50
+    components:
+      - momentum
+      - projection_depth
+      - multi_swing_strength
+
+  # Setup Scanner
+  setup_scanner:
+    enabled: true
+    min_score: 70
+    enabled_patterns:
+      - pullback
+      - 3_swing_trap
+    scan_interval_seconds: 30
+
+  # Entry Execution
+  entry_execution:
+    enabled: true
+    use_limit_orders: true
+    entry_offset_ticks: 2
+    max_entry_attempts: 3
+
+  # Trade Management
+  trade_management:
+    enabled: true
+    move_to_breakeven_at_r: 1.0
+    partial_exit_at_t1_pct: 50
+    trailing_stop_method: pivot
+
+  # Exit Execution
+  exit_execution:
+    enabled: true
+    exit_types:
+      - target
+      - stop
+      - time
+      - signal
+
+  # Real-Time Monitoring
+  real_time_monitoring:
+    enabled: true
+    check_interval_seconds: 5
+    alert_thresholds:
+      risk_utilization_pct: 70
+      pnl_warning_pct: -2.0
+
+  # Session Review
+  session_review:
+    enabled: true
+    generate_charts: true
+    calculate_hindsight_optimal: true
+
+  # Performance Analytics
+  performance_analytics:
+    enabled: true
+    update_journal: true
+    calculate_metrics:
+      - win_rate
+      - profit_factor
+      - expectancy
+      - sharpe_ratio
+
+  # Learning & Optimization
+  learning_optimization:
+    enabled: true
+    auto_optimize: false  # Manual review recommended
+    save_edge_cases: true
+
+  # Next Session Prep
+  next_session_prep:
+    enabled: true
+    auto_set_goals: true
+
+  # Contingency Management
+  contingency_management:
+    enabled: true
+    priority: critical
+
+  # Logging & Audit
+  logging_audit:
+    enabled: true
+    log_all_decisions: true
+    log_all_trades: true
+    retention_days: 365
