@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: ytc-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ytc_trading}
+      POSTGRES_USER: ${POSTGRES_USER:-ytc_trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ytc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ytc_trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Message Queue
+  redis:
+    image: redis:6.2-alpine
+    container_name: ytc-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ytc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # YTC Trading System
+  ytc-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ytc-trading-system
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Anthropic
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+
+      # Database
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-ytc_trading}
+      - POSTGRES_USER=${POSTGRES_USER:-ytc_trader}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=${REDIS_DB:-0}
+
+      # Trading
+      - TRADING_MARKET=${TRADING_MARKET:-forex}
+      - TRADING_INSTRUMENT=${TRADING_INSTRUMENT:-GBP/USD}
+      - SESSION_START_TIME=${SESSION_START_TIME:-09:30:00}
+      - SESSION_DURATION_HOURS=${SESSION_DURATION_HOURS:-3}
+
+      # Risk
+      - RISK_PER_TRADE_PCT=${RISK_PER_TRADE_PCT:-1.0}
+      - MAX_SESSION_RISK_PCT=${MAX_SESSION_RISK_PCT:-3.0}
+      - MAX_POSITIONS=${MAX_POSITIONS:-3}
+
+      # Account
+      - INITIAL_BALANCE=${INITIAL_BALANCE:-100000.00}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+
+      # Hummingbot
+      - HUMMINGBOT_GATEWAY_URL=${HUMMINGBOT_GATEWAY_URL:-http://hummingbot-gateway:15888}
+
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    networks:
+      - ytc-network
+    restart: unless-stopped
+
+  # Optional: Hummingbot Gateway (if not running separately)
+  # hummingbot-gateway:
+  #   image: hummingbot/gateway:latest
+  #   container_name: hummingbot-gateway
+  #   ports:
+  #     - "15888:15888"
+  #   volumes:
+  #     - ./hummingbot-conf:/usr/src/app/conf
+  #   networks:
+  #     - ytc-network
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ytc-network:
+    driver: bridge
