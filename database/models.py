@@ -97,7 +97,7 @@ class Trade(Base):
     setup_quality_score = Column(Integer, nullable=True)
     execution_quality_score = Column(Integer, nullable=True)
     notes = Column(String(500), nullable=True)
-    metadata = Column(JSON, nullable=True)
+    trade_metadata = Column(JSON, nullable=True)
 
     # Relationships
     session = relationship("Session", back_populates="trades")
@@ -155,7 +155,7 @@ class MarketStructure(Base):
     trend_strength = Column(Integer, nullable=True)  # 0-100
     structure_quality = Column(Integer, nullable=True)  # 0-100
 
-    metadata = Column(JSON, nullable=True)
+    structure_metadata = Column(JSON, nullable=True)
 
     def __repr__(self):
         return f"<MarketStructure {self.instrument} {self.timeframe}>"
@@ -201,7 +201,7 @@ class PerformanceMetrics(Base):
     max_drawdown_pct = Column(Float, default=0.0)
     sharpe_ratio = Column(Float, default=0.0)
 
-    metadata = Column(JSON, nullable=True)
+    metrics_metadata = Column(JSON, nullable=True)
 
     def __repr__(self):
         return f"<PerformanceMetrics {self.period_type} {self.period_start}>"
