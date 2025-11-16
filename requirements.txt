@@ -8,8 +8,8 @@ anthropic>=0.18.1
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
 
-# Trading Platform
-hummingbot>=1.25.0
+# Trading Platform (via HTTP API)
+# Hummingbot runs as separate service - interact via HTTP API
 ccxt>=4.0.0
 
 # Data & State Management
