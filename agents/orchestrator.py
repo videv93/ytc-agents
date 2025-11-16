@@ -4,11 +4,11 @@ Central coordinator for all YTC trading agents using LangGraph
 """
 
 from typing import Dict, Any, Literal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import structlog
 from langgraph.graph import StateGraph, END
-from agents.base import TradingState, BaseAgent
+from agents.base import TradingState
 
 logger = structlog.get_logger()
 
@@ -35,7 +35,7 @@ class MasterOrchestrator:
 
         # Initialize session state
         self.session_state: TradingState = self._initialize_state()
-        
+
         # Track workflow cycles for limiting
         self._workflow_cycles = 0
 
@@ -60,8 +60,8 @@ class MasterOrchestrator:
             # Session Info
             'session_id': str(uuid.uuid4()),
             'phase': 'pre_market',
-            'start_time': datetime.utcnow().isoformat(),
-            'current_time': datetime.utcnow().isoformat(),
+            'start_time': datetime.now(timezone.utc).isoformat(),
+            'current_time': datetime.now(timezone.utc).isoformat(),
 
             # Account State
             'account_balance': initial_balance,
@@ -77,7 +77,7 @@ class MasterOrchestrator:
 
             # Market State
             'market': session_config.get('market', 'forex'),
-            'instrument': session_config.get('instrument', 'GBP/USD'),
+            'instrument': session_config.get('instrument', 'ETH/USD'),
             'market_structure': {},
             'trend': {},
             'strength_weakness': {},
@@ -331,7 +331,7 @@ class MasterOrchestrator:
         # Check session duration
         start_time = datetime.fromisoformat(self.session_state['start_time'])
         max_duration = self.config.get('session_config', {}).get('duration_hours', 4)
-        if datetime.utcnow() - start_time > timedelta(hours=max_duration):
+        if datetime.now(timezone.utc) - start_time > timedelta(hours=max_duration):
             self.logger.info("session_timeout")
             return False
 
@@ -376,7 +376,7 @@ class MasterOrchestrator:
             duration_hours = session_config.get('duration_hours', 3)
             start_time = datetime.fromisoformat(state['start_time'])
 
-            if datetime.utcnow() - start_time > timedelta(hours=duration_hours):
+            if datetime.now(timezone.utc) - start_time > timedelta(hours=duration_hours):
                 state['phase'] = 'post_market'
                 self.logger.info("phase_transition", from_phase='active_trading', to_phase='post_market')
 
@@ -455,12 +455,12 @@ class MasterOrchestrator:
             Routing decision
         """
         self._workflow_cycles += 1
-        
+
         # End after shutdown phase or too many cycles
         if state['phase'] == 'shutdown' or self._workflow_cycles > 5:
             self.logger.info("workflow_ending", cycles=self._workflow_cycles, phase=state['phase'])
             return "end"
-        
+
         return "continue"
 
     def _is_market_open(self) -> bool:
@@ -473,9 +473,6 @@ class MasterOrchestrator:
         """
         # Placeholder implementation
         # In production, check actual market hours
-        now = datetime.utcnow()
-        session_start = self.config.get('session_config', {}).get('session_start_time', '09:30:00')
-
         # Simple time-based check (needs proper timezone handling)
         return True  # For now, always return True for testing
 
@@ -534,5 +531,5 @@ class MasterOrchestrator:
             Duration in hours
         """
         start = datetime.fromisoformat(self.session_state['start_time'])
-        duration = datetime.utcnow() - start
+        duration = datetime.now(timezone.utc) - start
         return duration.total_seconds() / 3600

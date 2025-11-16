@@ -3,13 +3,12 @@ Base Agent Framework for YTC Trading System
 Uses LangGraph for state management and workflow orchestration
 """
 
-from typing import TypedDict, Any, Dict, List, Optional, Annotated
-from datetime import datetime
+from typing import TypedDict, Any, Dict, List, Optional
+from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 import structlog
 from anthropic import Anthropic
 import os
-import json
 import sys
 
 # Add tools directory to path
@@ -271,13 +270,13 @@ Please analyze the current state and provide your output.
             updated_state['agent_outputs'] = {}
 
         updated_state['agent_outputs'][self.agent_id] = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'result': result,
             'status': result.get('status', 'success')
         }
 
         # Update current time
-        updated_state['current_time'] = datetime.utcnow().isoformat()
+        updated_state['current_time'] = datetime.now(timezone.utc).isoformat()
 
         return updated_state
 
@@ -290,7 +289,7 @@ Please analyze the current state and provide your output.
             state: Updated state
         """
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'agent_id': self.agent_id,
             'session_id': state.get('session_id'),
             'phase': state.get('phase'),
@@ -318,7 +317,7 @@ Please analyze the current state and provide your output.
         updated_state = state.copy()
 
         error_info = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'agent_id': self.agent_id,
             'error': str(error),
             'error_type': type(error).__name__
@@ -331,7 +330,7 @@ Please analyze the current state and provide your output.
         updated_state['alerts'].append({
             'severity': 'critical',
             'message': f"Agent {self.agent_id} failed: {str(error)}",
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
 
         # Store error in agent outputs
@@ -339,7 +338,7 @@ Please analyze the current state and provide your output.
             updated_state['agent_outputs'] = {}
 
         updated_state['agent_outputs'][self.agent_id] = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'status': 'error',
             'error': error_info
         }
@@ -386,7 +385,7 @@ Please analyze the current state and provide your output.
         state['alerts'].append({
             'severity': severity,
             'message': message,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'agent_id': self.agent_id
         })
 

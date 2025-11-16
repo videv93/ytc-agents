@@ -4,7 +4,7 @@ Defines the trend on the trading timeframe (3min)
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 from skills.pivot_detection import PivotDetectionSkill
@@ -88,7 +88,7 @@ class TrendDefinitionAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'timeframe': '3min',
                 'current_price': current_price,
                 'trend': trend_classification['trend'],
@@ -118,7 +118,7 @@ class TrendDefinitionAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _fetch_trading_tf_data(
@@ -141,10 +141,22 @@ class TrendDefinitionAgent(BaseAgent):
         import pandas as pd
         from datetime import timedelta
 
-        # TODO: Replace with actual data fetch
-        dates = [datetime.utcnow() - timedelta(minutes=3*i) for i in range(bars, 0, -1)]
+        # TODO: Replace with actual data fetch from Hummingbot Gateway
+        dates = [datetime.now(timezone.utc) - timedelta(minutes=3*i) for i in range(bars, 0, -1)]
 
-        base_price = 1.2500
+        # Get current price from gateway API
+        base_price = 1.25  # Default fallback
+        if self.gateway_client:
+            try:
+                market_data = await self.gateway_client.get_market_data(
+                    connector=self.config.get('connector', 'oanda'),
+                    trading_pair=instrument
+                )
+                if market_data.get('status') == 'ok':
+                    base_price = market_data['price']
+            except Exception as e:
+                self.logger.warning("failed_to_fetch_price", error=str(e), using_default=base_price)
+
         data = {
             'timestamp': dates,
             'open': [base_price + (i * 0.00005) for i in range(bars)],

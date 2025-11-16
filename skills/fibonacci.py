@@ -3,7 +3,7 @@ Fibonacci Calculation Skill
 YTC Fibonacci retracement and extension calculations
 """
 
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 import structlog
 
 logger = structlog.get_logger()

@@ -4,7 +4,7 @@ Monitors system health and trading metrics in real-time
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -58,7 +58,7 @@ class RealTimeMonitoringAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'alerts_generated': len(alerts_generated),
                 'alerts': alerts_generated,
                 'system_status': 'healthy' if not any(a['severity'] == 'critical' for a in alerts_generated) else 'degraded'
@@ -75,7 +75,7 @@ class RealTimeMonitoringAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _check_pnl_alerts(self, state: TradingState) -> List[Dict[str, Any]]:

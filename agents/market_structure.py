@@ -4,7 +4,7 @@ Analyzes higher timeframe market structure, identifies support/resistance zones
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 from skills.pivot_detection import PivotDetectionSkill
@@ -86,7 +86,7 @@ class MarketStructureAgent(BaseAgent):
             # Build result
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'timeframe': '30min',
                 'swing_points': {
                     'swing_highs': swing_points['swing_highs'][-10:],  # Last 10
@@ -117,7 +117,7 @@ class MarketStructureAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _fetch_higher_tf_data(
@@ -147,11 +147,23 @@ class MarketStructureAgent(BaseAgent):
                          timeframe=timeframe,
                          bars=bars)
 
-        # Mock data - replace with actual API call
-        dates = [datetime.utcnow() - timedelta(minutes=30*i) for i in range(bars, 0, -1)]
+        # TODO: Replace with actual data fetch from Hummingbot Gateway
+        dates = [datetime.now(timezone.utc) - timedelta(minutes=30*i) for i in range(bars, 0, -1)]
 
-        # Generate realistic looking price data
-        base_price = 1.2500
+        # Get current price from gateway API
+        base_price = 1.25  # Default fallback
+        if self.gateway_client:
+            try:
+                market_data = await self.gateway_client.get_market_data(
+                    connector=self.config.get('connector', 'oanda'),
+                    trading_pair=instrument
+                )
+                if market_data.get('status') == 'ok':
+                    base_price = market_data['price']
+                    self.logger.debug("fetched_current_price", price=base_price, trading_pair=instrument)
+            except Exception as e:
+                self.logger.warning("failed_to_fetch_price", error=str(e), using_default=base_price)
+
         data = {
             'timestamp': dates,
             'open': [base_price + (i * 0.0001) for i in range(bars)],

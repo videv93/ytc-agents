@@ -4,7 +4,7 @@ Calculates performance metrics and statistics
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -51,7 +51,7 @@ class PerformanceAnalyticsAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'metrics': metrics,
                 'trades_analyzed': len(trades)
             }
@@ -63,7 +63,7 @@ class PerformanceAnalyticsAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _calculate_win_rate(self, trades: List[Dict]) -> float:

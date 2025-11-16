@@ -3,8 +3,8 @@ Setup Scanner Agent (Agent 07)
 Scans for YTC trading setups (pullbacks and 3-swing traps)
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 from skills.fibonacci import FibonacciSkill
@@ -44,13 +44,12 @@ class SetupScannerAgent(BaseAgent):
             # Get prerequisite data
             trend_data = state.get('trend', {})
             market_structure = state.get('market_structure', {})
-            strength_weakness = state.get('strength_weakness', {})
 
             if not trend_data or trend_data.get('status') != 'success':
                 return {
                     'status': 'error',
                     'error': 'Trend data not available',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
 
             setups_found = []
@@ -83,7 +82,7 @@ class SetupScannerAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'setups_found': len(setups_found),
                 'high_quality_setups': len(high_quality_setups),
                 'setups': high_quality_setups,
@@ -101,7 +100,7 @@ class SetupScannerAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _scan_pullback_setups(
@@ -155,7 +154,19 @@ class SetupScannerAgent(BaseAgent):
                 )
 
                 # Check if current price near Fib level
-                current_price = 1.2500  # TODO: Get actual current price
+                # Get current price from gateway API
+                current_price = 1.25  # Default fallback
+                if self.gateway_client:
+                    try:
+                        market_data = await self.gateway_client.get_market_data(
+                            connector=self.config.get('connector', 'oanda'),
+                            trading_pair=state['instrument']
+                        )
+                        if market_data.get('status') == 'ok':
+                            current_price = market_data['price']
+                            self.logger.debug("fetched_current_price", price=current_price)
+                    except Exception as e:
+                        self.logger.warning("failed_to_fetch_price", error=str(e), using_default=current_price)
 
                 nearest_fib = self.fib_skill.find_nearest_fib_level(
                     current_price,

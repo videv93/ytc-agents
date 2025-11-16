@@ -3,8 +3,8 @@ Strength & Weakness Agent (Agent 06)
 Analyzes trend strength and weakness signals
 """
 
-from typing import Dict, Any, List
-from datetime import datetime
+from typing import Dict, Any
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -43,7 +43,7 @@ class StrengthWeaknessAgent(BaseAgent):
                 return {
                     'status': 'error',
                     'error': 'Trend data not available',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
 
             trend_direction = trend_data['trend']
@@ -67,7 +67,7 @@ class StrengthWeaknessAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'trend_direction': trend_direction,
                 'momentum': momentum,
                 'projection_depth': projection_depth,
@@ -90,7 +90,7 @@ class StrengthWeaknessAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _analyze_momentum(

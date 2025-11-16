@@ -4,7 +4,7 @@ Handles emergency situations and contingencies
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -46,7 +46,7 @@ class ContingencyManagementAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'emergency_status': 'none',
                 'all_systems_operational': True
             }
@@ -58,7 +58,7 @@ class ContingencyManagementAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _detect_emergency(self, state: TradingState) -> Dict[str, Any]:
@@ -99,7 +99,7 @@ class ContingencyManagementAgent(BaseAgent):
 
         return {
             'status': 'emergency_protocol_executed',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'emergency_type': emergency['type'],
             'actions_taken': [
                 'cancelled_all_orders',

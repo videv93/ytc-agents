@@ -131,6 +131,7 @@ async def test_risk_management():
     print()
 
     print("📊 Trade Parameters:")
+    # Mock prices for demonstration
     entry_price = 1.2500
     stop_price = 1.2475
     print(f"  Entry: {entry_price}")

@@ -4,7 +4,7 @@ Monitors economic news events and filters high-impact releases
 """
 
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -61,7 +61,7 @@ class EconomicCalendarAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'upcoming_events': high_impact_events[:10],  # Next 10 events
                 'total_events': len(upcoming_events),
                 'high_impact_count': len(high_impact_events),
@@ -90,7 +90,7 @@ class EconomicCalendarAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'trading_restricted': False  # Default to allow trading on error
             }
 
@@ -118,7 +118,7 @@ class EconomicCalendarAgent(BaseAgent):
 
         # Mock data - replace with actual API call
         # Example events for GBP/USD
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         mock_events = [
             {
@@ -166,7 +166,7 @@ class EconomicCalendarAgent(BaseAgent):
         Returns:
             Restriction status
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for event in events:
             event_time = datetime.fromisoformat(event['time'])
@@ -204,7 +204,7 @@ class EconomicCalendarAgent(BaseAgent):
         if not events:
             return None
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Sort by time
         future_events = [

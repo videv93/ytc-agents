@@ -4,7 +4,7 @@ Executes all types of trade exits
 """
 
 from typing import Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -23,7 +23,7 @@ class ExitExecutionAgent(BaseAgent):
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
         self.exit_types = config.get('agent_config', {}).get('exit_execution', {}).get('exit_types', ['target', 'stop', 'time', 'signal'])
-        self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:15888')
+        self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:8000')
         self.connector = config.get('connector', 'oanda')
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
@@ -45,7 +45,7 @@ class ExitExecutionAgent(BaseAgent):
                 return {
                     'status': 'no_action',
                     'reason': 'No open positions',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
 
             exits_executed = []
@@ -59,7 +59,7 @@ class ExitExecutionAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'positions_checked': len(positions),
                 'exits_executed': len(exits_executed),
                 'exits': exits_executed
@@ -75,7 +75,7 @@ class ExitExecutionAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _check_position_exit(
@@ -93,7 +93,18 @@ class ExitExecutionAgent(BaseAgent):
         Returns:
             Exit decision
         """
-        current_price = 1.2520  # TODO: Get actual current price
+        # Get current price from gateway API
+        current_price = 1.25  # Default fallback
+        if self.gateway_client:
+            try:
+                market_data = await self.gateway_client.get_market_data(
+                    connector=self.config.get('connector', 'oanda'),
+                    trading_pair=state['instrument']
+                )
+                if market_data.get('status') == 'ok':
+                    current_price = market_data['price']
+            except Exception as e:
+                self.logger.warning("failed_to_fetch_price", error=str(e))
 
         # Check target exit
         if 'target' in self.exit_types:
@@ -182,7 +193,7 @@ class ExitExecutionAgent(BaseAgent):
     ) -> Dict[str, Any]:
         """Check if max time in trade exceeded"""
         entry_time = datetime.fromisoformat(position['entry_time'])
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         duration = (now - entry_time).total_seconds() / 3600  # hours
 
         max_duration = 4  # hours
@@ -228,87 +239,87 @@ class ExitExecutionAgent(BaseAgent):
         return {'should_exit': False}
 
     async def _execute_exit(
-         self,
-         position: Dict[str, Any],
-         exit_decision: Dict[str, Any],
-         state: TradingState
-     ) -> Dict[str, Any]:
-         """
-         Execute exit order via Hummingbot Gateway API.
+        self,
+        position: Dict[str, Any],
+        exit_decision: Dict[str, Any],
+        state: TradingState
+    ) -> Dict[str, Any]:
+        """
+        Execute exit order via Hummingbot Gateway API.
 
-         Args:
-             position: Position to exit
-             exit_decision: Exit decision data
-             state: Trading state
+        Args:
+            position: Position to exit
+            exit_decision: Exit decision data
+            state: Trading state
 
-         Returns:
-             Execution result
-         """
-         try:
-             # Prepare exit parameters
-             side = 'sell' if position['direction'] == 'long' else 'buy'
-             amount = position['position_size_lots']
+        Returns:
+            Execution result
+        """
+        try:
+            # Prepare exit parameters
+            side = 'sell' if position['direction'] == 'long' else 'buy'
+            amount = position['position_size_lots']
 
-             self.logger.info("executing_exit_via_gateway",
-                            connector=self.connector,
-                            trading_pair=state['instrument'],
-                            side=side,
-                            amount=amount,
-                            exit_type=exit_decision['exit_type'])
+            self.logger.info("executing_exit_via_gateway",
+                             connector=self.connector,
+                             trading_pair=state['instrument'],
+                             side=side,
+                             amount=amount,
+                             exit_type=exit_decision['exit_type'])
 
-             # Use Gateway API to close position
-             if self.gateway_client:
-                 result = await self.hb_close_position(
-                     connector=self.connector,
-                     trading_pair=state['instrument'],
-                     amount=amount
-                 )
+            # Use Gateway API to close position
+            if self.gateway_client:
+                result = await self.hb_close_position(
+                    connector=self.connector,
+                    trading_pair=state['instrument'],
+                    amount=amount
+                )
 
-                 # Parse gateway API result
-                 if result.get('status') == 'executed':
-                     order_id = result.get('order', {}).get('orderId', result.get('order', {}).get('id', 'UNKNOWN'))
-                     return {
-                         'success': True,
-                         'position_id': position.get('id'),
-                         'exit_type': exit_decision['exit_type'],
-                         'exit_price': exit_decision.get('exit_price'),
-                         'reason': exit_decision['reason'],
-                         'order_id': order_id,
-                         'connector': self.connector,
-                         'trading_pair': state['instrument'],
-                         'timestamp': datetime.utcnow().isoformat(),
-                         'gateway_response': result
-                     }
-                 else:
-                     # Error from gateway
-                     self.logger.error("gateway_exit_failed",
-                                     status=result.get('status'),
-                                     error=result.get('error'))
-                     return {
-                         'success': False,
-                         'error': result.get('error', 'Unknown gateway error'),
-                         'gateway_response': result
-                     }
-             else:
-                 # Fallback to mock if gateway not available
-                 self.logger.warning("gateway_not_available",
-                                   message="Using mock exit result")
-                 return {
-                     'success': True,
-                     'position_id': position.get('id'),
-                     'exit_type': exit_decision['exit_type'],
-                     'exit_price': exit_decision.get('exit_price'),
-                     'reason': exit_decision['reason'],
-                     'order_id': 'EXIT-MOCK-12345',
-                     'connector': self.connector,
-                     'trading_pair': state['instrument'],
-                     'timestamp': datetime.utcnow().isoformat(),
-                     'gateway_mode': 'disabled'
-                 }
+                # Parse gateway API result
+                if result.get('status') == 'executed':
+                    order_id = result.get('order', {}).get('orderId', result.get('order', {}).get('id', 'UNKNOWN'))
+                    return {
+                        'success': True,
+                        'position_id': position.get('id'),
+                        'exit_type': exit_decision['exit_type'],
+                        'exit_price': exit_decision.get('exit_price'),
+                        'reason': exit_decision['reason'],
+                        'order_id': order_id,
+                        'connector': self.connector,
+                        'trading_pair': state['instrument'],
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'gateway_response': result
+                    }
+                else:
+                    # Error from gateway
+                    self.logger.error("gateway_exit_failed",
+                                      status=result.get('status'),
+                                      error=result.get('error'))
+                    return {
+                        'success': False,
+                        'error': result.get('error', 'Unknown gateway error'),
+                        'gateway_response': result
+                    }
+            else:
+                # Fallback to mock if gateway not available
+                self.logger.warning("gateway_not_available",
+                                    message="Using mock exit result")
+                return {
+                    'success': True,
+                    'position_id': position.get('id'),
+                    'exit_type': exit_decision['exit_type'],
+                    'exit_price': exit_decision.get('exit_price'),
+                    'reason': exit_decision['reason'],
+                    'order_id': 'EXIT-MOCK-12345',
+                    'connector': self.connector,
+                    'trading_pair': state['instrument'],
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'gateway_mode': 'disabled'
+                }
 
-         except Exception as e:
-             self.logger.error("exit_execution_failed", error=str(e))
-             return {
-                 'success': False,
-                 'error': str(e)
-             }
+        except Exception as e:
+            self.logger.error("exit_execution_failed", error=str(e))
+            return {
+                'success': False,
+                'error': str(e)
+            }

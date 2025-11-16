@@ -4,7 +4,7 @@ Handles position sizing, risk calculations, and trade validation
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -47,7 +47,7 @@ class RiskManagementAgent(BaseAgent):
 
         results = {
             'status': 'success',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'risk_parameters': risk_params,
             'session_risk': session_risk,
             'risk_checks': risk_checks,

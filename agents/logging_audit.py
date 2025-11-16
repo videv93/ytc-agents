@@ -4,7 +4,7 @@ Maintains comprehensive audit trail of all decisions and actions
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 from database.connection import get_database
@@ -49,7 +49,7 @@ class LoggingAuditAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'decisions_logged': logged_count,
                 'trade_events_logged': len(trade_logs)
             }
@@ -61,7 +61,7 @@ class LoggingAuditAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _ensure_session_exists(self, state: TradingState) -> None:
@@ -79,7 +79,7 @@ class LoggingAuditAgent(BaseAgent):
                 session = Session(
                     session_id=session_id,
                     market=state.get('market', 'forex'),
-                    instrument=state.get('instrument', 'GBP/USD'),
+                    instrument=state.get('instrument', 'ETH/USD'),
                     initial_balance=state.get('initial_balance', 100000.0),
                     status='active'
                 )

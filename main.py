@@ -8,7 +8,7 @@ import sys
 import asyncio
 import signal
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from dotenv import load_dotenv
 import yaml
@@ -74,7 +74,10 @@ class YTCTradingSystem:
             'max_tokens': 4096,
 
             # Hummingbot
-            'hummingbot_gateway_url': os.getenv('HUMMINGBOT_GATEWAY_URL', 'http://localhost:15888'),
+            'hummingbot_gateway_url': os.getenv('HUMMINGBOT_GATEWAY_URL', 'http://localhost:8000'),
+            'hummingbot_username': os.getenv('HUMMINGBOT_USERNAME'),
+            'hummingbot_password': os.getenv('HUMMINGBOT_PASSWORD'),
+            'connector': os.getenv('CONNECTOR', 'binance_perpetual'),
 
             # Account
             'account_config': {
@@ -90,7 +93,7 @@ class YTCTradingSystem:
         else:
             config['session_config'] = {
                 'market': os.getenv('TRADING_MARKET', 'forex'),
-                'instrument': os.getenv('TRADING_INSTRUMENT', 'GBP/USD'),
+                'instrument': os.getenv('TRADING_INSTRUMENT', 'ETH/USD'),
                 'session_start_time': os.getenv('SESSION_START_TIME', '09:30:00'),
                 'duration_hours': int(os.getenv('SESSION_DURATION_HOURS', '3'))
             }
@@ -159,7 +162,7 @@ class YTCTradingSystem:
         """Start the YTC trading system"""
         try:
             self.logger.info("starting_ytc_system",
-                           timestamp=datetime.utcnow().isoformat())
+                           timestamp=datetime.now(timezone.utc).isoformat())
 
             # Initialize components
             await self.initialize_database()

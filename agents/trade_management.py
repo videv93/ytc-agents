@@ -4,7 +4,7 @@ Manages open positions with trailing stops and partial exits
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -46,7 +46,7 @@ class TradeManagementAgent(BaseAgent):
                 return {
                     'status': 'no_action',
                     'reason': 'No open positions',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
 
             management_actions = []
@@ -58,7 +58,7 @@ class TradeManagementAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'positions_managed': len(positions),
                 'actions_taken': len(management_actions),
                 'actions': management_actions
@@ -74,7 +74,7 @@ class TradeManagementAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     async def _manage_position(
@@ -93,7 +93,19 @@ class TradeManagementAgent(BaseAgent):
             List of management actions
         """
         actions = []
-        current_price = 1.2520  # TODO: Get actual current price
+        
+        # Get current price from gateway API
+        current_price = 1.25  # Default fallback
+        if self.gateway_client:
+            try:
+                market_data = await self.gateway_client.get_market_data(
+                    connector=self.config.get('connector', 'oanda'),
+                    trading_pair=state['instrument']
+                )
+                if market_data.get('status') == 'ok':
+                    current_price = market_data['price']
+            except Exception as e:
+                self.logger.warning("failed_to_fetch_price", error=str(e))
 
         # Calculate R-multiple
         r_multiple = self._calculate_r_multiple(position, current_price)
@@ -190,10 +202,13 @@ class TradeManagementAgent(BaseAgent):
 
                 # Only trail up, never down
                 if last_low > position['stop_loss']:
+                    # Use instrument specs for tick size
+                    tick_size = state.get('agent_outputs', {}).get('system_init', {}).get('result', {}).get('checks', {}).get('instrument', {}).get('specs', {}).get('tick_size', 0.0001)
+                    buffer_ticks = 2  # Default 2 ticks buffer
                     return {
                         'action': 'trail_stop',
                         'position_id': position.get('id'),
-                        'new_stop': last_low - 0.0002,  # Buffer below pivot
+                        'new_stop': last_low - (buffer_ticks * tick_size),  # Buffer below pivot
                         'reason': 'Trailing at higher low pivot'
                     }
 

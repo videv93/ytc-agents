@@ -17,36 +17,36 @@ def pivot_skill():
 
 @pytest.fixture
 def uptrend_data():
-    """Create sample uptrend OHLC data"""
-    dates = [datetime.now() - timedelta(minutes=i) for i in range(100, 0, -1)]
+     """Create sample uptrend OHLC data"""
+     dates = [datetime.now() - timedelta(minutes=i) for i in range(100, 0, -1)]
 
-    # Create uptrend data
-    data = {
-        'timestamp': dates,
-        'open': [1.2000 + (i * 0.0001) for i in range(100)],
-        'high': [1.2005 + (i * 0.0001) for i in range(100)],
-        'low': [1.1995 + (i * 0.0001) for i in range(100)],
-        'close': [1.2002 + (i * 0.0001) for i in range(100)]
-    }
+     # Create uptrend data
+     data = {
+         'timestamp': dates,
+         'open': [1.2000 + (i * 0.0001) for i in range(100)],
+         'high': [1.2005 + (i * 0.0001) for i in range(100)],
+         'low': [1.1995 + (i * 0.0001) for i in range(100)],
+         'close': [1.2002 + (i * 0.0001) for i in range(100)]
+     }
 
-    return pd.DataFrame(data)
+     return pd.DataFrame(data)
 
 
 @pytest.fixture
 def downtrend_data():
-    """Create sample downtrend OHLC data"""
-    dates = [datetime.now() - timedelta(minutes=i) for i in range(100, 0, -1)]
+     """Create sample downtrend OHLC data"""
+     dates = [datetime.now() - timedelta(minutes=i) for i in range(100, 0, -1)]
 
-    # Create downtrend data
-    data = {
-        'timestamp': dates,
-        'open': [1.2100 - (i * 0.0001) for i in range(100)],
-        'high': [1.2105 - (i * 0.0001) for i in range(100)],
-        'low': [1.2095 - (i * 0.0001) for i in range(100)],
-        'close': [1.2102 - (i * 0.0001) for i in range(100)]
-    }
+     # Create downtrend data
+     data = {
+         'timestamp': dates,
+         'open': [1.2100 - (i * 0.0001) for i in range(100)],
+         'high': [1.2105 - (i * 0.0001) for i in range(100)],
+         'low': [1.2095 - (i * 0.0001) for i in range(100)],
+         'close': [1.2102 - (i * 0.0001) for i in range(100)]
+     }
 
-    return pd.DataFrame(data)
+     return pd.DataFrame(data)
 
 
 class TestSwingPointDetection:

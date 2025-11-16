@@ -4,7 +4,7 @@ Prepares for the next trading session
 """
 
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -50,8 +50,8 @@ class NextSessionPrepAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
-                'next_session_date': (datetime.utcnow() + timedelta(days=1)).date().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'next_session_date': (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat(),
                 'goals': goals,
                 'focus_areas': focus_areas,
                 'checklist': checklist
@@ -64,7 +64,7 @@ class NextSessionPrepAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _set_next_session_goals(self, review: Dict, state: TradingState) -> List[str]:

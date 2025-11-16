@@ -5,8 +5,7 @@ Uses the actual Hummingbot REST API endpoints (not MCP protocol)
 """
 
 import aiohttp
-import json
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 import structlog
 
 logger = structlog.get_logger()
@@ -41,10 +40,10 @@ class HummingbotGatewayClient:
         self.logger = logger.bind(component="gateway_client")
         self.session: Optional[aiohttp.ClientSession] = None
         self.auth: Optional[aiohttp.BasicAuth] = None
-        
+
         if username and password:
             self.auth = aiohttp.BasicAuth(username, password)
-        
+
         self.logger.info("gateway_client_initialized", gateway_url=self.gateway_url, account=account_name, auth_enabled=bool(self.auth))
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -494,7 +493,7 @@ class HummingbotGatewayClient:
         """
         try:
             payload = {
-                "connector": connector,
+                "connector_name": connector,
                 "trading_pairs": [trading_pair]
             }
 
@@ -541,7 +540,7 @@ class HummingbotGatewayClient:
         """
         try:
             payload = {
-                "connector": connector,
+                "connector_name": connector,
                 "trading_pairs": [trading_pair]
             }
 

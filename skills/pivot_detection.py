@@ -6,7 +6,6 @@ YTC swing point detection for market structure analysis
 from typing import Dict, List, Any
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import structlog
 
 logger = structlog.get_logger()

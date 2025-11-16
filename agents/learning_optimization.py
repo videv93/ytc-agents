@@ -4,7 +4,7 @@ Learns from results and optimizes parameters
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -48,7 +48,7 @@ class LearningOptimizationAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'patterns_identified': patterns,
                 'edge_cases_found': edge_cases,
                 'recommendations': recommendations
@@ -61,7 +61,7 @@ class LearningOptimizationAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _identify_patterns(self, state: TradingState) -> List[Dict]:

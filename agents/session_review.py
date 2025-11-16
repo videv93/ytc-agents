@@ -4,7 +4,7 @@ Performs post-session analysis and review
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from agents.base import BaseAgent, TradingState
 
@@ -53,7 +53,7 @@ class SessionReviewAgent(BaseAgent):
 
             result = {
                 'status': 'success',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'session_id': state['session_id'],
                 'trades_reviewed': len(trades),
                 'trade_reviews': trade_reviews,
@@ -72,7 +72,7 @@ class SessionReviewAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def _review_trade(self, trade: Dict[str, Any]) -> Dict[str, Any]:
