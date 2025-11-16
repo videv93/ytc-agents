@@ -3,7 +3,7 @@ Learning & Optimization Agent (Agent 14)
 Learns from results and optimizes parameters
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import structlog
 from agents.base import BaseAgent, TradingState

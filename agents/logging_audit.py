@@ -3,12 +3,12 @@ Logging & Audit Agent (Agent 17)
 Maintains comprehensive audit trail of all decisions and actions
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import structlog
 from agents.base import BaseAgent, TradingState
 from database.connection import get_database
-from database.models import AgentDecision
+from database.models import AgentDecision, Session
 
 logger = structlog.get_logger()
 
@@ -38,6 +38,9 @@ class LoggingAuditAgent(BaseAgent):
             Logging results
         """
         try:
+            # Ensure session exists in database
+            await self._ensure_session_exists(state)
+
             # Log agent outputs
             logged_count = await self._log_agent_decisions(state)
 
@@ -60,6 +63,30 @@ class LoggingAuditAgent(BaseAgent):
                 'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }
+
+    async def _ensure_session_exists(self, state: TradingState) -> None:
+        """Ensure session record exists in database"""
+        session_id = state['session_id']
+        
+        try:
+            with self.db.get_session() as db_session:
+                # Check if session already exists
+                existing = db_session.query(Session).filter_by(session_id=session_id).first()
+                if existing:
+                    return
+                
+                # Create new session record
+                session = Session(
+                    session_id=session_id,
+                    market=state.get('market', 'forex'),
+                    instrument=state.get('instrument', 'GBP/USD'),
+                    initial_balance=state.get('initial_balance', 100000.0),
+                    status='active'
+                )
+                db_session.add(session)
+        except Exception as e:
+            self.logger.error("session_creation_failed", session_id=session_id, error=str(e))
+            raise
 
     async def _log_agent_decisions(self, state: TradingState) -> int:
         """Log all agent decisions to database"""

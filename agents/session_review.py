@@ -3,7 +3,7 @@ Session Review Agent (Agent 12)
 Performs post-session analysis and review
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import structlog
 from agents.base import BaseAgent, TradingState

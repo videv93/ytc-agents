@@ -3,7 +3,7 @@ Next Session Prep Agent (Agent 15)
 Prepares for the next trading session
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import structlog
 from agents.base import BaseAgent, TradingState

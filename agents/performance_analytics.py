@@ -3,7 +3,7 @@ Performance Analytics Agent (Agent 13)
 Calculates performance metrics and statistics
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import structlog
 from agents.base import BaseAgent, TradingState

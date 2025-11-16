@@ -35,6 +35,9 @@ class MasterOrchestrator:
 
         # Initialize session state
         self.session_state: TradingState = self._initialize_state()
+        
+        # Track workflow cycles for limiting
+        self._workflow_cycles = 0
 
         # Build the LangGraph workflow
         self.workflow = self._build_workflow()
@@ -263,7 +266,10 @@ class MasterOrchestrator:
 
         try:
             # Execute the workflow
-            final_state = await self.workflow.ainvoke(self.session_state)
+            final_state = await self.workflow.ainvoke(
+                self.session_state,
+                config={"recursion_limit": 100}
+            )
 
             # Update our state
             self.session_state = final_state
@@ -303,7 +309,10 @@ class MasterOrchestrator:
         self.logger.debug("processing_cycle", phase=self.session_state['phase'])
 
         # Execute workflow with current state
-        updated_state = await self.workflow.ainvoke(self.session_state)
+        updated_state = await self.workflow.ainvoke(
+            self.session_state,
+            config={"recursion_limit": 100}
+        )
 
         # Update our state
         self.session_state = updated_state
@@ -445,8 +454,13 @@ class MasterOrchestrator:
         Returns:
             Routing decision
         """
-        if state['phase'] == 'shutdown':
+        self._workflow_cycles += 1
+        
+        # End after shutdown phase or too many cycles
+        if state['phase'] == 'shutdown' or self._workflow_cycles > 5:
+            self.logger.info("workflow_ending", cycles=self._workflow_cycles, phase=state['phase'])
             return "end"
+        
         return "continue"
 
     def _is_market_open(self) -> bool:
