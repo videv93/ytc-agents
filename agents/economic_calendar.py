@@ -117,7 +117,7 @@ class EconomicCalendarAgent(BaseAgent):
                          hours_ahead=hours_ahead)
 
         # Mock data - replace with actual API call
-        # Example events for GBP/USD
+        # Example events for EUR/USD
         now = datetime.now(timezone.utc)
 
         mock_events = [

@@ -154,13 +154,13 @@ from agents.orchestrator import MasterOrchestrator
 import yaml
 
 async def step_through_workflow():
-    # Load config
-    config = {
-        'anthropic_api_key': 'your-key',
-        'session_config': {
-            'market': 'forex',
-            'instrument': 'GBP/USD'
-        },
+     # Load config
+     config = {
+         'anthropic_api_key': 'your-key',
+         'session_config': {
+             'market': 'crypto',
+             'instrument': 'ETH/USD'
+         },
         'risk_config': {
             'risk_per_trade_pct': 1.0,
             'max_session_risk_pct': 3.0,
@@ -250,11 +250,11 @@ This will output a Mermaid diagram you can paste into documentation.
 ```python
 # minimal_config.py
 config = {
-    'anthropic_api_key': 'sk-ant-...',
-    'session_config': {
-        'market': 'forex',
-        'instrument': 'GBP/USD'
-    },
+     'anthropic_api_key': 'sk-ant-...',
+     'session_config': {
+         'market': 'crypto',
+         'instrument': 'ETH/USD'
+     },
     'risk_config': {
         'risk_per_trade_pct': 1.0,
         'max_session_risk_pct': 3.0

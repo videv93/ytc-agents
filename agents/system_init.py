@@ -135,7 +135,7 @@ class SystemInitAgent(BaseAgent):
         Load instrument specifications.
 
         Args:
-            instrument: Instrument symbol (e.g., 'GBP/USD')
+            instrument: Instrument symbol (e.g., 'ETH/USD')
 
         Returns:
             Instrument specifications
@@ -148,14 +148,6 @@ class SystemInitAgent(BaseAgent):
 
             # Example specs for various instruments
             specs = {
-                'GBP/USD': {
-                    'tick_size': 0.0001,
-                    'tick_value': 10.0,
-                    'min_size': 1000,
-                    'max_size': 1000000,
-                    'margin_requirement': 0.02,
-                    'contract_size': 100000
-                },
                 'ETH/USD': {
                     'tick_size': 0.01,
                     'tick_value': 1.0,

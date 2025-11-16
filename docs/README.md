@@ -184,8 +184,8 @@ from ytc_orchestrator import MasterOrchestrator
 # Initialize system
 orchestrator = MasterOrchestrator(
     session_config={
-        "market": "forex",
-        "instrument": "GBP/USD",
+        "market": "crypto",
+        "instrument": "ETH/USD",
         "session_duration_hours": 3
     }
 )

@@ -298,7 +298,7 @@ def analyze_correlation_risk(positions, correlation_matrix, correlation_threshol
     Identifies highly correlated positions that increase effective risk
     
     Per YTC: Avoid highly correlated markets
-    Example: Long GBP/USD + Long EUR/USD = effectively 2% risk on USD weakness
+    Example: Long ETH/USD + Long BTC/USD = effectively 2% risk on crypto market weakness
     
     Args:
         positions: List of open positions

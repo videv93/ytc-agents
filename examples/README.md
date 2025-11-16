@@ -148,8 +148,8 @@ YTC Trading System - Simple Workflow Demo
 ======================================================================
 
 📋 Configuration:
-  Market: forex
-  Instrument: GBP/USD
+   Market: crypto
+   Instrument: ETH/USD
   Initial Balance: $100,000.00
   Risk per Trade: 1.0%
 

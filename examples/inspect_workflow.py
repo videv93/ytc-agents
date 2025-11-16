@@ -25,7 +25,7 @@ def main():
     # Create minimal config
     config = {
         'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY', 'test-key'),
-        'session_config': {'market': 'forex', 'instrument': 'GBP/USD'},
+        'session_config': {'market': 'crypto', 'instrument': 'ETH/USD'},
         'risk_config': {'risk_per_trade_pct': 1.0, 'max_session_risk_pct': 3.0},
         'account_config': {'initial_balance': 100000.0}
     }

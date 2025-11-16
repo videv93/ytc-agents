@@ -136,8 +136,8 @@ max_positions: 3
 ### Session Settings
 Edit `config/session_config.yaml`:
 ```yaml
-market: forex
-instrument: GBP/USD
+market: crypto
+instrument: ETH/USD
 timeframes:
   higher: 30min
   trading: 3min

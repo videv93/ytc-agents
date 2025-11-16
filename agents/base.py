@@ -407,7 +407,7 @@ Please analyze the current state and provide your output.
 
         Args:
             connector: Exchange connector (e.g., 'oanda')
-            trading_pair: Trading pair (e.g., 'GBP/USD')
+            trading_pair: Trading pair (e.g., 'ETH/USD')
             side: 'buy' or 'sell'
             amount: Position size
             order_type: 'market' or 'limit'

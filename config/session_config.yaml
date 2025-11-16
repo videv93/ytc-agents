@@ -1,7 +1,7 @@
 # YTC Trading System - Session Configuration
 
-market: forex
-instrument: GBP/USD
+market: crypto
+instrument: ETH/USD
 
 # Timeframes for multi-timeframe analysis
 timeframes:

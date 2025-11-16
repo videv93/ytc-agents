@@ -17,8 +17,8 @@ def test_config():
         'anthropic_api_key': 'test-api-key',
         'model': 'claude-sonnet-4-20250514',
         'session_config': {
-            'market': 'forex',
-            'instrument': 'GBP/USD',
+            'market': 'crypto',
+            'instrument': 'ETH/USD',
             'session_start_time': '09:30:00',
             'duration_hours': 3
         },
