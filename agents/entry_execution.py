@@ -246,103 +246,95 @@ class EntryExecutionAgent(BaseAgent):
         return stop_loss
 
     async def _execute_entry_order(
-        self,
-        setup: Dict[str, Any],
-        entry_trigger: Dict[str, Any],
-        position_data: Dict[str, Any],
-        state: TradingState
-    ) -> Dict[str, Any]:
-        """
-        Execute entry order via Hummingbot MCP.
+         self,
+         setup: Dict[str, Any],
+         entry_trigger: Dict[str, Any],
+         position_data: Dict[str, Any],
+         state: TradingState
+     ) -> Dict[str, Any]:
+         """
+         Execute entry order via Hummingbot Gateway API.
 
-        Args:
-            setup: Setup configuration
-            entry_trigger: Entry trigger
-            position_data: Position sizing data
-            state: Trading state
+         Args:
+             setup: Setup configuration
+             entry_trigger: Entry trigger
+             position_data: Position sizing data
+             state: Trading state
 
-        Returns:
-            Order execution result
-        """
-        try:
-            # Prepare order parameters
-            side = 'buy' if setup['direction'] == 'long' else 'sell'
-            order_type = 'limit' if self.use_limit_orders else 'market'
-            amount = position_data['position_size_lots']
-            price = entry_trigger['entry_price'] if self.use_limit_orders else None
+         Returns:
+             Order execution result
+         """
+         try:
+             # Prepare order parameters
+             side = 'buy' if setup['direction'] == 'long' else 'sell'
+             order_type = 'limit' if self.use_limit_orders else 'market'
+             amount = position_data['position_size_lots']
+             price = entry_trigger['entry_price'] if self.use_limit_orders else None
 
-            self.logger.info("placing_order_via_mcp",
-                           connector=self.connector,
-                           trading_pair=state['instrument'],
-                           side=side,
-                           amount=amount,
-                           order_type=order_type,
-                           price=price)
+             self.logger.info("placing_order_via_gateway",
+                            connector=self.connector,
+                            trading_pair=state['instrument'],
+                            side=side,
+                            amount=amount,
+                            order_type=order_type,
+                            price=price)
 
-            # Use MCP to place order
-            if self.mcp_client:
-                result = await self.hb_place_order(
-                    connector=self.connector,
-                    trading_pair=state['instrument'],
-                    side=side,
-                    amount=amount,
-                    order_type=order_type,
-                    price=price
-                )
+             # Use Gateway API to place order
+             if self.gateway_client:
+                 result = await self.hb_place_order(
+                     connector=self.connector,
+                     trading_pair=state['instrument'],
+                     side=side,
+                     amount=amount,
+                     order_type=order_type,
+                     price=price
+                 )
 
-                # Parse MCP result
-                if result.get('status') == 'would_execute':
-                    # MCP server not running, use mock
-                    self.logger.warning("mcp_server_not_running",
-                                      message="Using mock order result")
-                    return {
-                        'success': True,
-                        'order_id': 'ORDER-MOCK-12345',
-                        'connector': self.connector,
-                        'trading_pair': state['instrument'],
-                        'side': side,
-                        'amount': amount,
-                        'order_type': order_type,
-                        'execution_price': entry_trigger['entry_price'],
-                        'timestamp': datetime.utcnow().isoformat(),
-                        'mcp_mode': 'mock'
-                    }
-                else:
-                    # Real MCP response
-                    order_id = result.get('orderId', result.get('id', 'UNKNOWN'))
-                    return {
-                        'success': True,
-                        'order_id': order_id,
-                        'connector': self.connector,
-                        'trading_pair': state['instrument'],
-                        'side': side,
-                        'amount': amount,
-                        'order_type': order_type,
-                        'execution_price': entry_trigger['entry_price'],
-                        'timestamp': datetime.utcnow().isoformat(),
-                        'mcp_mode': 'live',
-                        'mcp_response': result
-                    }
-            else:
-                # Fallback to mock if MCP not available
-                self.logger.warning("mcp_not_available",
-                                  message="Using mock order result")
-                return {
-                    'success': True,
-                    'order_id': 'ORDER-MOCK-12345',
-                    'connector': self.connector,
-                    'trading_pair': state['instrument'],
-                    'side': side,
-                    'amount': amount,
-                    'order_type': order_type,
-                    'execution_price': entry_trigger['entry_price'],
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'mcp_mode': 'disabled'
-                }
+                 # Parse gateway API result
+                 if result.get('status') == 'executed':
+                     order_id = result.get('order', {}).get('orderId', result.get('order', {}).get('id', 'UNKNOWN'))
+                     return {
+                         'success': True,
+                         'order_id': order_id,
+                         'connector': self.connector,
+                         'trading_pair': state['instrument'],
+                         'side': side,
+                         'amount': amount,
+                         'order_type': order_type,
+                         'execution_price': entry_trigger['entry_price'],
+                         'timestamp': datetime.utcnow().isoformat(),
+                         'gateway_response': result
+                     }
+                 else:
+                     # Error from gateway
+                     self.logger.error("gateway_order_failed",
+                                     status=result.get('status'),
+                                     error=result.get('error'))
+                     return {
+                         'success': False,
+                         'error': result.get('error', 'Unknown gateway error'),
+                         'gateway_response': result
+                     }
+             else:
+                 # Fallback to mock if gateway not available
+                 self.logger.warning("gateway_not_available",
+                                   message="Using mock order result")
+                 return {
+                     'success': True,
+                     'order_id': 'ORDER-MOCK-12345',
+                     'connector': self.connector,
+                     'trading_pair': state['instrument'],
+                     'side': side,
+                     'amount': amount,
+                     'order_type': order_type,
+                     'execution_price': entry_trigger['entry_price'],
+                     'timestamp': datetime.utcnow().isoformat(),
+                     'gateway_mode': 'disabled'
+                 }
 
-        except Exception as e:
-            self.logger.error("order_execution_failed", error=str(e))
-            return {
-                'success': False,
-                'error': str(e)
-            }
+         except Exception as e:
+             self.logger.error("order_execution_failed", error=str(e))
+             return {
+                 'success': False,
+                 'error': str(e)
+             }
