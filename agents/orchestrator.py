@@ -8,10 +8,16 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import structlog
 import asyncio
+import os
 from langgraph.graph import StateGraph, END
 from agents.base import TradingState
 
 logger = structlog.get_logger()
+
+# Configure LangSmith tracing (optional)
+if os.getenv('LANGSMITH_API_KEY'):
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    # LANGSMITH_API_KEY, LANGSMITH_PROJECT set via environment variables
 
 
 class MasterOrchestrator:
@@ -100,7 +106,10 @@ class MasterOrchestrator:
 
             # Emergency
             'emergency_stop': False,
-            'stop_reason': None
+            'stop_reason': None,
+
+            # Workflow Cycle Tracking (used for Setup Scanner throttling)
+            '_workflow_cycle': 0
         }
 
         return state
@@ -108,44 +117,53 @@ class MasterOrchestrator:
     def _get_account_balance_sync(self) -> float:
         """
         Fetch account balance from Hummingbot Gateway API synchronously.
-        Uses asyncio.run() to handle async call in sync context.
+        
+        Note: Balance fetching is deferred to avoid asyncio.run() conflicts
+        when orchestrator is initialized in an async context. The first
+        agent (SystemInitAgent) will fetch the real balance during pre-market.
 
         Returns:
-            Account balance or fallback value
+            Account balance (uses fallback during initialization)
         """
         try:
-            # Try to initialize gateway client and fetch balance
-            from tools.gateway_api_client import HummingbotGatewayClient
-            
-            gateway_url = self.config.get('hummingbot_gateway_url', 'http://localhost:8000')
-            gateway_username = self.config.get('hummingbot_username', 'admin')
-            gateway_password = self.config.get('hummingbot_password', 'admin')
-            
-            gateway_client = HummingbotGatewayClient(
-                gateway_url=gateway_url,
-                username=gateway_username,
-                password=gateway_password
-            )
-            
-            # Get connector from config (primary source: 'connector' key, fallback to 'market')
-            connector = self.config.get('connector') or self.config.get('session_config', {}).get('market')
-            if not connector:
-                connector = 'binance_perpetual'  # Default fallback
-            
-            # Run async function to get balance
-            balance_result = asyncio.run(gateway_client.get_balance(connector))
-            
-            if balance_result.get('status') == 'ok':
-                balance = balance_result.get('balance', 0.0)
-                self.logger.info("account_balance_fetched",
-                               balance=balance,
-                               currency=balance_result.get('currency', 'USDT'),
-                               connector=connector)
-                asyncio.run(gateway_client.close())
-                return balance
-            else:
-                error_msg = balance_result.get('error', 'Unknown error')
-                self.logger.warning("balance_fetch_failed", error=error_msg, connector=connector)
+            # Check if there's an active event loop
+            try:
+                asyncio.get_running_loop()
+                # We're in an async context - skip fetching and use fallback
+                self.logger.debug("event_loop_running_deferring_balance_fetch")
+            except RuntimeError:
+                # No running loop - safe to use asyncio.run()
+                from tools.gateway_api_client import HummingbotGatewayClient
+                
+                gateway_url = self.config.get('hummingbot_gateway_url', 'http://localhost:8000')
+                gateway_username = self.config.get('hummingbot_username', 'admin')
+                gateway_password = self.config.get('hummingbot_password', 'admin')
+                
+                gateway_client = HummingbotGatewayClient(
+                    gateway_url=gateway_url,
+                    username=gateway_username,
+                    password=gateway_password
+                )
+                
+                # Get connector from config (primary source: 'connector' key, fallback to 'market')
+                connector = self.config.get('connector') or self.config.get('session_config', {}).get('market')
+                if not connector:
+                    connector = 'binance_perpetual'  # Default fallback
+                
+                # Run async function to get balance
+                balance_result = asyncio.run(gateway_client.get_balance(connector))
+                
+                if balance_result.get('status') == 'ok':
+                    balance = balance_result.get('balance', 0.0)
+                    self.logger.info("account_balance_fetched",
+                                   balance=balance,
+                                   currency=balance_result.get('currency', 'USDT'),
+                                   connector=connector)
+                    asyncio.run(gateway_client.close())
+                    return balance
+                else:
+                    error_msg = balance_result.get('error', 'Unknown error')
+                    self.logger.warning("balance_fetch_failed", error=error_msg, connector=connector)
         
         except Exception as e:
             self.logger.warning("exception_fetching_balance",
@@ -243,7 +261,8 @@ class MasterOrchestrator:
         # Entry point
         workflow.set_entry_point("system_init")
 
-        # Pre-market sequence
+        # PRE-MARKET PHASE FLOW
+        # system_init → risk_mgmt → market_structure → economic_calendar → contingency → emergency_check → logging_audit → check_phase
         workflow.add_edge("system_init", "risk_mgmt")
         workflow.add_edge("risk_mgmt", "market_structure")
         workflow.add_edge("market_structure", "economic_calendar")
@@ -255,76 +274,78 @@ class MasterOrchestrator:
             "emergency_check",
             self._route_emergency,
             {
-                "continue": "check_phase",
-                "stop": END
+                "continue": "logging_audit",  # Continue to logging after pre-market
+                "stop": END                   # Stop if emergency triggered
             }
         )
 
-        # Phase-based routing
+        # PHASE ROUTING (from check_phase)
+        # Routes to appropriate phase based on current phase
         workflow.add_conditional_edges(
             "check_phase",
             self._route_by_phase,
             {
-                "pre_market": "logging_audit",  # Log and loop
-                "session_open": "trend_definition",
-                "active_trading": "monitoring",
-                "post_market": "session_review",
-                "shutdown": END
+                "pre_market": "system_init",        # Loop back to system_init (should have transitioned, safety check)
+                "session_open": "trend_definition",  # Session open → start trend analysis
+                "active_trading": "monitoring",      # Active trading → monitoring (cycle start)
+                "post_market": "session_review",     # Post-market → review
+                "shutdown": END                      # Shutdown → end workflow
             }
         )
 
-        # Session open phase flow
+        # SESSION OPEN PHASE FLOW
+        # trend_definition → strength_weakness → logging_audit
         workflow.add_edge("trend_definition", "strength_weakness")
         workflow.add_edge("strength_weakness", "logging_audit")
 
-        # Active trading phase flow
+        # ACTIVE TRADING PHASE FLOW (cycles)
+        # monitoring → setup_scanner (conditional) → entry_execution → trade_management (conditional) → exit_execution → logging_audit
         workflow.add_edge("monitoring", "setup_scanner")
         
-        # Conditional routing: only execute entry if valid setups exist
+        # Conditional routing: only scan for setups once per cycle
+        # If already scanned this cycle, skip to entry_execution
+        # Otherwise, run setup_scanner, then entry_execution handles routing
         workflow.add_conditional_edges(
             "setup_scanner",
-            self._has_valid_setups,
+            self._should_run_setup_scanner,
             {
-                "entry": "entry_execution",
-                "skip": "logging_audit"
+                "scan": "entry_execution",      # Setup scanner ran, go to entry
+                "skip": "entry_execution"       # Setup scanner skipped, still go to entry (uses cached results)
             }
         )
+        
+        # Entry execution always runs in active trading
+        workflow.add_edge("entry_execution", "trade_management")
         
         # Conditional routing: only manage trades if positions exist
         workflow.add_conditional_edges(
-            "entry_execution",
+            "trade_management",
             self._has_open_positions,
             {
-                "manage": "trade_management",
-                "skip": "logging_audit"
+                "manage": "exit_execution",     # Positions exist, manage them
+                "skip": "logging_audit"         # No positions, skip to logging
             }
         )
         
-        workflow.add_edge("trade_management", "exit_execution")
-        
-        # Conditional routing: only execute exit if entry was executed
-        workflow.add_conditional_edges(
-            "exit_execution",
-            self._should_execute_exit,
-            {
-                "exit": "logging_audit",
-                "skip": "logging_audit"
-            }
-        )
+        # Exit execution routing (only runs if trade_management ran)
+        workflow.add_edge("exit_execution", "logging_audit")
 
-        # Post-market phase flow
+        # POST-MARKET PHASE FLOW
+        # session_review → performance_analytics → learning_optimization → next_session_prep → logging_audit
         workflow.add_edge("session_review", "performance_analytics")
         workflow.add_edge("performance_analytics", "learning_optimization")
         workflow.add_edge("learning_optimization", "next_session_prep")
         workflow.add_edge("next_session_prep", "logging_audit")
 
-        # Logging loops back to phase check
+        # CYCLE ROUTING (from logging_audit)
+        # After logging, either continue (go back to check_phase for phase routing)
+        # or end the workflow (when phase = shutdown)
         workflow.add_conditional_edges(
             "logging_audit",
             self._after_logging_route,
             {
-                "continue": "check_phase",
-                "end": END
+                "continue": "check_phase",      # Continue to next cycle/phase
+                "end": END                      # End workflow
             }
         )
 
@@ -349,9 +370,10 @@ class MasterOrchestrator:
 
         try:
             # Execute the workflow
+            # Recursion limit accommodates: pre_market (1) + session_open (1) + active_trading cycles (1 per minute for 3 hours = ~180) + post_market (1)
             final_state = await self.workflow.ainvoke(
                 self.session_state,
-                config={"recursion_limit": 100}
+                config={"recursion_limit": 500}
             )
 
             # Update our state
@@ -394,7 +416,7 @@ class MasterOrchestrator:
         # Execute workflow with current state
         updated_state = await self.workflow.ainvoke(
             self.session_state,
-            config={"recursion_limit": 100}
+            config={"recursion_limit": 500}
         )
 
         # Update our state
@@ -437,25 +459,23 @@ class MasterOrchestrator:
         current_phase = state['phase']
         self.logger.debug("checking_phase_transition", current_phase=current_phase)
 
-        # Phase transition logic
-        # This is a simplified version - expand based on actual requirements
-
         if current_phase == 'pre_market':
-            # Check if market is open
-            if self._is_market_open():
+            # Pre-market phase runs once (system_init through emergency_check)
+            # Transition immediately after emergency_check completes
+            if 'system_init' in state.get('agent_outputs', {}):
                 state['phase'] = 'session_open'
                 self.logger.info("phase_transition", from_phase='pre_market', to_phase='session_open')
 
         elif current_phase == 'session_open':
-            # After initial analysis, move to active trading
-            # Check if strength_weakness agent has completed
+            # Session open runs once (trend_definition and strength_weakness)
+            # Transition after both agents complete
             agent_outputs = state.get('agent_outputs', {})
             if 'trend_definition' in agent_outputs and 'strength_weakness' in agent_outputs:
                 state['phase'] = 'active_trading'
                 self.logger.info("phase_transition", from_phase='session_open', to_phase='active_trading')
 
         elif current_phase == 'active_trading':
-            # Check if session should end
+            # Active trading cycles until session duration expires
             session_config = self.config.get('session_config', {})
             duration_hours = session_config.get('duration_hours', 3)
             start_time = datetime.fromisoformat(state['start_time'])
@@ -465,7 +485,8 @@ class MasterOrchestrator:
                 self.logger.info("phase_transition", from_phase='active_trading', to_phase='post_market')
 
         elif current_phase == 'post_market':
-            # After review, shutdown
+            # Post-market phase runs once (session review and analytics)
+            # Transition after session_review completes
             if 'session_review' in state.get('agent_outputs', {}):
                 state['phase'] = 'shutdown'
                 self.logger.info("phase_transition", from_phase='post_market', to_phase='shutdown')
@@ -514,6 +535,41 @@ class MasterOrchestrator:
         else:
             self.logger.debug("no_open_positions_skipping_management")
             return "skip"
+
+    def _should_run_setup_scanner(self, state: TradingState) -> str:
+        """
+        Check if setup_scanner should run this cycle.
+        Only scan for setups once per cycle - skip if already scanned in this cycle.
+        
+        This prevents CPU-intensive scanning from running multiple times per OHLC bar
+        while allowing entry_execution to still check triggers on every cycle using
+        cached scan results.
+
+        Args:
+            state: Current trading state
+
+        Returns:
+            "scan" to execute setup_scanner, "skip" to use cached results from previous scan
+        """
+        agent_outputs = state.get('agent_outputs', {})
+        setup_scanner_output = agent_outputs.get('setup_scanner', {})
+        
+        # Get which cycle the last scan executed in
+        last_scan_cycle = setup_scanner_output.get('cycle_scanned')
+        current_cycle = self._workflow_cycles
+        
+        # If setup_scanner ran this cycle already, skip and use cached results
+        if last_scan_cycle == current_cycle:
+            self.logger.debug("setup_scanner_already_ran_this_cycle",
+                            current_cycle=current_cycle,
+                            last_scan_cycle=last_scan_cycle)
+            return "skip"
+        
+        # New cycle or first run - execute setup_scanner
+        self.logger.debug("setup_scanner_running",
+                        current_cycle=current_cycle,
+                        last_scan_cycle=last_scan_cycle)
+        return "scan"
 
     def _should_execute_exit(self, state: TradingState) -> str:
         """
@@ -597,20 +653,24 @@ class MasterOrchestrator:
     def _after_logging_route(self, state: TradingState) -> Literal["continue", "end"]:
         """
         Route after logging - continue or end session.
+        Increments workflow cycle counter for Setup Scanner throttling.
 
         Args:
             state: Current state
 
         Returns:
-            Routing decision
+            "continue" to loop back to check_phase, "end" to terminate workflow
         """
+        # Increment cycle counter (used by _should_run_setup_scanner for throttling)
         self._workflow_cycles += 1
+        state['_workflow_cycle'] = self._workflow_cycles
 
-        # End after shutdown phase or too many cycles
-        if state['phase'] == 'shutdown' or self._workflow_cycles > 5:
-            self.logger.info("workflow_ending", cycles=self._workflow_cycles, phase=state['phase'])
+        # Only end when entering shutdown phase
+        if state['phase'] == 'shutdown':
+            self.logger.info("workflow_ending", cycles=self._workflow_cycles, phase='shutdown')
             return "end"
 
+        # Otherwise continue to next cycle
         return "continue"
 
     def _is_market_open(self) -> bool:
@@ -683,3 +743,33 @@ class MasterOrchestrator:
         start = datetime.fromisoformat(self.session_state['start_time'])
         duration = datetime.now(timezone.utc) - start
         return duration.total_seconds() / 3600
+
+    def visualize_graph(self, output_path: str = None) -> str:
+        """
+        Visualize the workflow graph.
+        
+        Args:
+            output_path: Optional file path to save PNG/SVG visualization
+            
+        Returns:
+            ASCII representation of the graph, or path if output_path specified
+        """
+        try:
+            # Get PNG representation (requires graphviz)
+            png = self.workflow.get_graph().draw_mermaid_png()
+            
+            if output_path:
+                with open(output_path, 'wb') as f:
+                    f.write(png)
+                self.logger.info("graph_visualization_saved", path=output_path)
+                return output_path
+            
+            return "Graph PNG generated (view in LangSmith or save with output_path)"
+            
+        except Exception as e:
+            self.logger.warning("graph_visualization_failed", error=str(e))
+            # Fallback to ASCII representation
+            try:
+                return self.workflow.get_graph().draw_ascii()
+            except:
+                return "Unable to visualize graph - install graphviz"
