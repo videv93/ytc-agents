@@ -168,11 +168,9 @@ class YTCTradingSystem:
             await self.initialize_database()
             await self.initialize_orchestrator()
 
-            # Start trading session
-            session_id = await self.orchestrator.start_session()
-
+            # Log session start
             self.logger.info("trading_session_started",
-                           session_id=session_id)
+                           session_id=self.orchestrator.session_state['session_id'])
 
             # Run the orchestrator
             await self.run()
@@ -182,27 +180,42 @@ class YTCTradingSystem:
             raise
 
     async def run(self) -> None:
-        """Main run loop"""
+        """Main run loop using workflow streaming"""
         try:
             self.logger.info("entering_main_loop")
 
-            # Run until shutdown signal
-            while not self.shutdown_event.is_set():
-                # Check if orchestrator is still active
-                if self.orchestrator.is_active():
-                    await self.orchestrator.process_cycle()
-                else:
-                    self.logger.info("orchestrator_inactive_ending_session")
+            # Stream the workflow instead of using ainvoke
+            # This gives us updates as workflow progresses
+            async for event in self.orchestrator.workflow.astream(
+                self.orchestrator.session_state,
+                config={"recursion_limit": 500}
+            ):
+                # Check for shutdown signal
+                if self.shutdown_event.is_set():
+                    self.logger.info("shutdown_signal_received_halting_workflow")
                     break
-
-                # Conditional sleep based on phase
-                current_phase = self.orchestrator.session_state.get('phase', 'unknown')
-                if current_phase == 'active_trading':
-                    # Fast loop during active trading
-                    await asyncio.sleep(30)
-                else:
-                    # Slower loop for other phases (pre_market, session_open, post_market, shutdown)
-                    await asyncio.sleep(60)
+                
+                # Update orchestrator state with latest from workflow
+                if isinstance(event, dict):
+                    # Update state from workflow event
+                    for node_name, node_state in event.items():
+                        if isinstance(node_state, dict) and 'phase' in node_state:
+                            self.orchestrator.session_state = node_state
+                            current_phase = node_state.get('phase', 'unknown')
+                            
+                            # Log phase transitions
+                            if current_phase != self.orchestrator.session_state.get('phase'):
+                                self.logger.info("phase_transition",
+                                              from_phase=self.orchestrator.session_state.get('phase'),
+                                              to_phase=current_phase)
+                            
+                            # Small delay based on phase
+                            if current_phase == 'active_trading':
+                                await asyncio.sleep(0.1)  # Fast loop
+                            else:
+                                await asyncio.sleep(0.5)  # Slower loop
+                                
+            self.logger.info("workflow_completed")
 
         except asyncio.CancelledError:
             self.logger.info("main_loop_cancelled")

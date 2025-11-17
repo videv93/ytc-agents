@@ -154,18 +154,17 @@ class SystemInitAgent(BaseAgent):
             if self.gateway_client:
                 try:
                     endpoint = f"/connectors/{self.connector}/trading-rules"
-                    trading_rules = await self.gateway_client._request("GET", endpoint)
+                    trading_pairs = await self.gateway_client._request("GET", endpoint)
 
                     self.logger.info(
                         "trading_rules_fetched",
                         connector=self.connector,
-                        rules=trading_rules,
+                        rules=trading_pairs,
                     )
 
                     # Parse trading rules for the instrument
-                    if isinstance(trading_rules, dict):
+                    if isinstance(trading_pairs, dict):
                         # Extract trading pair specs from rules
-                        trading_pairs = trading_rules.get("trading_pairs", {})
 
                         if instrument in trading_pairs:
                             pair_rules = trading_pairs[instrument]
@@ -175,31 +174,30 @@ class SystemInitAgent(BaseAgent):
                                 "connector": self.connector,
                                 "specs": {
                                     "tick_size": float(
-                                        pair_rules.get("precision", {}).get(
-                                            "amount", 0.001
-                                        )
+                                        pair_rules.get("min_base_amount_increment", 0.001)
                                     ),
                                     "tick_value": float(
-                                        pair_rules.get("precision", {}).get(
-                                            "price", 0.01
-                                        )
+                                        pair_rules.get("min_price_increment", 0.01)
                                     ),
                                     "min_size": float(
-                                        pair_rules.get("limits", {})
-                                        .get("amount", {})
-                                        .get("min", 0.001)
+                                        pair_rules.get("min_order_size", 0.001)
                                     ),
                                     "max_size": float(
-                                        pair_rules.get("limits", {})
-                                        .get("amount", {})
-                                        .get("max", 1000.0)
+                                        pair_rules.get("max_order_size", 1000.0)
                                     ),
-                                    "margin_requirement": float(
-                                        pair_rules.get("maker", 0.001)
+                                    "min_notional_size": float(
+                                        pair_rules.get("min_notional_size", 20.0)
                                     ),
+                                    "margin_requirement": 0.001,
                                     "contract_size": 1.0,
-                                    "maker_fee": float(pair_rules.get("maker", 0.001)),
-                                    "taker_fee": float(pair_rules.get("taker", 0.001)),
+                                    "maker_fee": 0.001,
+                                    "taker_fee": 0.001,
+                                    "supports_limit_orders": pair_rules.get(
+                                        "supports_limit_orders", True
+                                    ),
+                                    "supports_market_orders": pair_rules.get(
+                                        "supports_market_orders", True
+                                    ),
                                 },
                             }
                         else:
@@ -227,7 +225,7 @@ class SystemInitAgent(BaseAgent):
                     else:
                         self.logger.warning(
                             "unexpected_trading_rules_format",
-                            rules_type=type(trading_rules),
+                            rules_type=type(trading_pairs),
                         )
                         return {
                             "status": "ok",

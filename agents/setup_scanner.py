@@ -117,12 +117,14 @@ class SetupScannerAgent(BaseAgent):
                 'setups_found': len(setups_found),
                 'high_quality_setups': len(high_quality_setups),
                 'setups': high_quality_setups,
-                'min_score_threshold': self.min_score
+                'min_score_threshold': self.min_score,
+                'cycle_scanned': state.get('_workflow_cycle', 0)  # Track which cycle this scan executed in
             }
 
             self.logger.info("setup_scan_complete",
                            total_setups=len(setups_found),
-                           high_quality=len(high_quality_setups))
+                           high_quality=len(high_quality_setups),
+                           cycle=result['cycle_scanned'])
 
             return result
 
@@ -131,7 +133,8 @@ class SetupScannerAgent(BaseAgent):
             return {
                 'status': 'error',
                 'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'cycle_scanned': state.get('_workflow_cycle', 0)
             }
 
     async def _scan_tst_setups(

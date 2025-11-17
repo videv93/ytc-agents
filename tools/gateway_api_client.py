@@ -174,25 +174,37 @@ class HummingbotGatewayClient:
             result = await self._request(
                 "POST",
                 "/portfolio/state",
-                data={
-                    "account_names": [account] if account != "all" else None,
-                    "connector_names": [connector] if connector != "all" else None
-                }
+                data={}
             )
 
             # Parse balance from portfolio state
-            if isinstance(result, dict) and account in result:
-                connector_data = result[account].get(connector, [])
-                if connector_data:
-                    total_balance = sum(float(item.get("amount", 0)) for item in connector_data)
-                    return {
-                        "status": "ok",
-                        "account": account,
-                        "connector": connector,
-                        "balance": total_balance,
-                        "currency": "USDT",
-                        "details": connector_data
-                    }
+            # Response structure: {account_name: {connector_name: [{token, units, available_units, ...}]}}
+            if isinstance(result, dict):
+                # Try to find the account in the response
+                account_data = None
+                if account in result:
+                    account_data = result[account]
+                elif "master_account" in result:
+                    account_data = result["master_account"]
+                
+                if account_data:
+                    connector_data = account_data.get(connector, [])
+                    if connector_data:
+                        # Sum available units (not units, which might include short positions)
+                        total_balance = sum(float(item.get("available_units", 0)) for item in connector_data)
+                        # Get primary currency (first token or USDT if available)
+                        primary_currency = next(
+                            (item.get("token", "USDT") for item in connector_data if item.get("token") == "USDT"),
+                            connector_data[0].get("token", "USDT") if connector_data else "USDT"
+                        )
+                        return {
+                            "status": "ok",
+                            "account": account,
+                            "connector": connector,
+                            "balance": total_balance,
+                            "currency": primary_currency,
+                            "details": connector_data
+                        }
 
             return {
                 "status": "ok",
