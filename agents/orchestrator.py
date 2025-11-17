@@ -7,6 +7,7 @@ from typing import Dict, Any, Literal
 from datetime import datetime, timedelta, timezone
 import uuid
 import structlog
+import asyncio
 from langgraph.graph import StateGraph, END
 from agents.base import TradingState
 
@@ -47,6 +48,7 @@ class MasterOrchestrator:
     def _initialize_state(self) -> TradingState:
         """
         Initialize the trading state for a new session.
+        Fetches the account balance from Hummingbot Gateway API.
 
         Returns:
             Initial TradingState
@@ -54,7 +56,8 @@ class MasterOrchestrator:
         session_config = self.config.get('session_config', {})
         risk_config = self.config.get('risk_config', {})
 
-        initial_balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
+        # Get initial balance with fallback to config
+        initial_balance = self._get_account_balance_sync()
 
         state: TradingState = {
             # Session Info
@@ -101,6 +104,58 @@ class MasterOrchestrator:
         }
 
         return state
+
+    def _get_account_balance_sync(self) -> float:
+        """
+        Fetch account balance from Hummingbot Gateway API synchronously.
+        Uses asyncio.run() to handle async call in sync context.
+
+        Returns:
+            Account balance or fallback value
+        """
+        try:
+            # Try to initialize gateway client and fetch balance
+            from tools.gateway_api_client import HummingbotGatewayClient
+            
+            gateway_url = self.config.get('hummingbot_gateway_url', 'http://localhost:8000')
+            gateway_username = self.config.get('hummingbot_username', 'admin')
+            gateway_password = self.config.get('hummingbot_password', 'admin')
+            
+            gateway_client = HummingbotGatewayClient(
+                gateway_url=gateway_url,
+                username=gateway_username,
+                password=gateway_password
+            )
+            
+            # Get connector from config (primary source: 'connector' key, fallback to 'market')
+            connector = self.config.get('connector') or self.config.get('session_config', {}).get('market')
+            if not connector:
+                connector = 'binance_perpetual'  # Default fallback
+            
+            # Run async function to get balance
+            balance_result = asyncio.run(gateway_client.get_balance(connector))
+            
+            if balance_result.get('status') == 'ok':
+                balance = balance_result.get('balance', 0.0)
+                self.logger.info("account_balance_fetched",
+                               balance=balance,
+                               currency=balance_result.get('currency', 'USDT'),
+                               connector=connector)
+                asyncio.run(gateway_client.close())
+                return balance
+            else:
+                error_msg = balance_result.get('error', 'Unknown error')
+                self.logger.warning("balance_fetch_failed", error=error_msg, connector=connector)
+        
+        except Exception as e:
+            self.logger.warning("exception_fetching_balance",
+                              error=str(e),
+                              error_type=type(e).__name__)
+        
+        # Fallback to config value
+        fallback_balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
+        self.logger.info("using_fallback_balance", balance=fallback_balance)
+        return fallback_balance
 
     def _build_workflow(self) -> StateGraph:
         """
@@ -365,8 +420,9 @@ class MasterOrchestrator:
 
         elif current_phase == 'session_open':
             # After initial analysis, move to active trading
-            # Check if trend analysis is complete
-            if 'trend' in state.get('agent_outputs', {}):
+            # Check if strength_weakness agent has completed
+            agent_outputs = state.get('agent_outputs', {})
+            if 'trend_definition' in agent_outputs and 'strength_weakness' in agent_outputs:
                 state['phase'] = 'active_trading'
                 self.logger.info("phase_transition", from_phase='session_open', to_phase='active_trading')
 

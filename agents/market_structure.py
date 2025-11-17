@@ -6,6 +6,7 @@ Analyzes higher timeframe market structure, identifies support/resistance zones
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 import structlog
+from scipy.signal import find_peaks
 from agents.base import BaseAgent, TradingState
 from skills.pivot_detection import PivotDetectionSkill
 
@@ -51,11 +52,8 @@ class MarketStructureAgent(BaseAgent):
                 bars=self.lookback_bars
             )
 
-            # Detect swing points
-            swing_points = self.pivot_skill.detect_swing_points(
-                ohlc_data,
-                swing_bars=self.swing_bars
-            )
+            # Detect swing points using find_peaks
+            swing_points = self._detect_swing_points_with_peaks(ohlc_data)
 
             # Identify support zones from swing lows
             support_zones = self.pivot_skill.find_support_resistance_zones(
@@ -148,6 +146,7 @@ class MarketStructureAgent(BaseAgent):
                          bars=bars)
 
         # TODO: Replace with actual data fetch from Hummingbot Gateway
+        import numpy as np
         dates = [datetime.now(timezone.utc) - timedelta(minutes=30*i) for i in range(bars, 0, -1)]
 
         # Get current price from gateway API
@@ -164,15 +163,77 @@ class MarketStructureAgent(BaseAgent):
             except Exception as e:
                 self.logger.warning("failed_to_fetch_price", error=str(e), using_default=base_price)
 
+        # Generate oscillating price data with swings
+        noise = np.random.normal(0, 0.00015, bars)
+        trend = np.linspace(0, 0.002, bars)
+        oscillation = 0.0008 * np.sin(np.linspace(0, 4*np.pi, bars))
+        
+        closes = base_price + trend + oscillation + noise
+        highs = closes + np.abs(noise) + 0.0005
+        lows = closes - np.abs(noise) - 0.0005
+        opens = closes + np.random.normal(0, 0.0002, bars)
+        
         data = {
             'timestamp': dates,
-            'open': [base_price + (i * 0.0001) for i in range(bars)],
-            'high': [base_price + (i * 0.0001) + 0.0005 for i in range(bars)],
-            'low': [base_price + (i * 0.0001) - 0.0005 for i in range(bars)],
-            'close': [base_price + (i * 0.0001) + 0.0002 for i in range(bars)]
+            'open': opens,
+            'high': highs,
+            'low': lows,
+            'close': closes
         }
 
         return pd.DataFrame(data)
+
+    def _detect_swing_points_with_peaks(self, ohlc_data: Any) -> Dict[str, List]:
+        """
+        Detect swing points using scipy.signal.find_peaks.
+
+        Args:
+            ohlc_data: DataFrame with OHLC data
+
+        Returns:
+            Dictionary with swing_highs and swing_lows
+        """
+        import numpy as np
+        
+        highs = ohlc_data['high'].values
+        lows = ohlc_data['low'].values
+        
+        # Find swing highs using prominence and distance
+        peaks_high, properties_high = find_peaks(
+            highs,
+            distance=max(1, self.swing_bars - 1),
+            prominence=0.00001  # Minimum prominence for peaks
+        )
+        
+        # Find swing lows (invert signal to find troughs)
+        peaks_low, properties_low = find_peaks(
+            -lows,
+            distance=max(1, self.swing_bars - 1),
+            prominence=0.00001  # Minimum prominence for troughs
+        )
+        
+        swing_highs = [
+            {
+                'index': int(idx),
+                'price': float(highs[idx]),
+                'timestamp': str(ohlc_data['timestamp'].iloc[idx])
+            }
+            for idx in peaks_high
+        ]
+        
+        swing_lows = [
+            {
+                'index': int(idx),
+                'price': float(lows[idx]),
+                'timestamp': str(ohlc_data['timestamp'].iloc[idx])
+            }
+            for idx in peaks_low
+        ]
+        
+        return {
+            'swing_highs': swing_highs,
+            'swing_lows': swing_lows
+        }
 
     def _calculate_structure_quality(
         self,

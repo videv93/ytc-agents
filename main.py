@@ -195,8 +195,14 @@ class YTCTradingSystem:
                     self.logger.info("orchestrator_inactive_ending_session")
                     break
 
-                # Small delay
-                await asyncio.sleep(1)
+                # Conditional sleep based on phase
+                current_phase = self.orchestrator.session_state.get('phase', 'unknown')
+                if current_phase == 'active_trading':
+                    # Fast loop during active trading
+                    await asyncio.sleep(30)
+                else:
+                    # Slower loop for other phases (pre_market, session_open, post_market, shutdown)
+                    await asyncio.sleep(60)
 
         except asyncio.CancelledError:
             self.logger.info("main_loop_cancelled")
