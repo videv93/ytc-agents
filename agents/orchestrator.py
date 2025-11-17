@@ -279,10 +279,38 @@ class MasterOrchestrator:
 
         # Active trading phase flow
         workflow.add_edge("monitoring", "setup_scanner")
-        workflow.add_edge("setup_scanner", "entry_execution")
-        workflow.add_edge("entry_execution", "trade_management")
+        
+        # Conditional routing: only execute entry if valid setups exist
+        workflow.add_conditional_edges(
+            "setup_scanner",
+            self._has_valid_setups,
+            {
+                "entry": "entry_execution",
+                "skip": "logging_audit"
+            }
+        )
+        
+        # Conditional routing: only manage trades if positions exist
+        workflow.add_conditional_edges(
+            "entry_execution",
+            self._has_open_positions,
+            {
+                "manage": "trade_management",
+                "skip": "logging_audit"
+            }
+        )
+        
         workflow.add_edge("trade_management", "exit_execution")
-        workflow.add_edge("exit_execution", "logging_audit")
+        
+        # Conditional routing: only execute exit if entry was executed
+        workflow.add_conditional_edges(
+            "exit_execution",
+            self._should_execute_exit,
+            {
+                "exit": "logging_audit",
+                "skip": "logging_audit"
+            }
+        )
 
         # Post-market phase flow
         workflow.add_edge("session_review", "performance_analytics")
@@ -443,6 +471,72 @@ class MasterOrchestrator:
                 self.logger.info("phase_transition", from_phase='post_market', to_phase='shutdown')
 
         return state
+
+    def _has_valid_setups(self, state: TradingState) -> str:
+        """
+        Check if setup_scanner found valid setups.
+        Routes to entry_execution only if valid setups exist.
+
+        Args:
+            state: Current trading state
+
+        Returns:
+            "entry" if valid setups found, "skip" otherwise
+        """
+        scanner_output = state.get('agent_outputs', {}).get('setup_scanner', {})
+        scanner_result = scanner_output.get('result', {})
+        setups = scanner_result.get('setups', [])
+
+        if setups and len(setups) > 0:
+            self.logger.debug("valid_setups_found", count=len(setups))
+            return "entry"
+        else:
+            self.logger.debug("no_valid_setups_skipping_entry")
+            return "skip"
+
+    def _has_open_positions(self, state: TradingState) -> str:
+        """
+        Check if there are open positions.
+        Routes to trade management only if positions exist.
+
+        Args:
+            state: Current trading state
+
+        Returns:
+            "manage" if positions exist, "skip" otherwise
+        """
+        positions = state.get('positions', [])
+        open_count = state.get('open_positions_count', 0)
+
+        if positions and len(positions) > 0 and open_count > 0:
+            self.logger.debug("open_positions_found", count=len(positions))
+            return "manage"
+        else:
+            self.logger.debug("no_open_positions_skipping_management")
+            return "skip"
+
+    def _should_execute_exit(self, state: TradingState) -> str:
+        """
+        Check if exit_execution should run.
+        Only execute if entry_execution status is 'executed'.
+        Skip if status is 'waiting', 'rejected', or any other non-executed status.
+
+        Args:
+            state: Current trading state
+
+        Returns:
+            "exit" if entry was executed, "skip" otherwise
+        """
+        agent_outputs = state.get('agent_outputs', {})
+        entry_execution_output = agent_outputs.get('entry_execution', {})
+        entry_status = entry_execution_output.get('status')
+
+        if entry_status == 'executed':
+            self.logger.debug("entry_executed_routing_to_exit", status=entry_status)
+            return "exit"
+        else:
+            self.logger.debug("entry_not_executed_skipping_exit", status=entry_status)
+            return "skip"
 
     async def _check_emergency(self, state: TradingState) -> TradingState:
         """

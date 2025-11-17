@@ -30,6 +30,8 @@ class ExitExecutionAgent(BaseAgent):
         """
         Check and execute exits for all positions.
 
+        Skip exit execution if entry_execution status is 'waiting' or 'rejected'.
+
         Args:
             state: Current trading state
 
@@ -39,6 +41,21 @@ class ExitExecutionAgent(BaseAgent):
         self.logger.info("checking_exits")
 
         try:
+            # Check entry_execution status - skip if waiting or rejected
+            agent_outputs = state.get('agent_outputs', {})
+            entry_execution_output = agent_outputs.get('entry_execution', {})
+            entry_status = entry_execution_output.get('status')
+
+            if entry_status in ['waiting', 'rejected']:
+                self.logger.info("skipping_exit_execution",
+                               reason=f"entry_execution status is {entry_status}")
+                return {
+                    'status': 'skipped',
+                    'reason': f'Entry execution status is {entry_status}',
+                    'entry_execution_status': entry_status,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+
             positions = state.get('positions', [])
 
             if not positions:
