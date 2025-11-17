@@ -28,7 +28,7 @@ async def main():
         'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY', 'test-key'),
         'session_config': {
             'market': 'crypto',
-            'instrument': 'ETH/USD',
+            'instrument': 'ETH-USDT',
             'duration_hours': 1  # Short demo
         },
         'risk_config': {

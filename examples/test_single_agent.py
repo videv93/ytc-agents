@@ -56,7 +56,7 @@ async def test_risk_management():
         'risk_params': {},
         'risk_utilization': 0.0,
         'market': 'crypto',
-        'instrument': 'ETH/USD',
+        'instrument': 'ETH-USDT',
         'market_structure': {},
         'trend': {},
         'strength_weakness': {},

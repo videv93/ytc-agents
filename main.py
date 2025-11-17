@@ -77,7 +77,7 @@ class YTCTradingSystem:
             'hummingbot_gateway_url': os.getenv('HUMMINGBOT_GATEWAY_URL', 'http://localhost:8000'),
             'hummingbot_username': os.getenv('HUMMINGBOT_USERNAME'),
             'hummingbot_password': os.getenv('HUMMINGBOT_PASSWORD'),
-            'connector': os.getenv('CONNECTOR', 'binance_perpetual'),
+            'connector': os.getenv('CONNECTOR', 'binance_perpetual_testnet'),
 
             # Account
             'account_config': {
@@ -92,8 +92,8 @@ class YTCTradingSystem:
                 config['session_config'] = yaml.safe_load(f)
         else:
             config['session_config'] = {
-                'market': os.getenv('TRADING_MARKET', 'forex'),
-                'instrument': os.getenv('TRADING_INSTRUMENT', 'ETH/USD'),
+                'market': os.getenv('TRADING_MARKET', 'crypto'),
+                'instrument': os.getenv('TRADING_INSTRUMENT', 'ETH-USDT'),
                 'session_start_time': os.getenv('SESSION_START_TIME', '09:30:00'),
                 'duration_hours': int(os.getenv('SESSION_DURATION_HOURS', '3'))
             }

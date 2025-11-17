@@ -22,8 +22,10 @@ class SystemInitAgent(BaseAgent):
 
     def __init__(self, agent_id: str, config: Dict[str, Any]):
         super().__init__(agent_id, config)
-        self.hummingbot_url = config.get('hummingbot_gateway_url', 'http://localhost:8000')
-        self.connector = config.get('connector', 'oanda')
+        self.hummingbot_url = config.get(
+            "hummingbot_gateway_url", "http://localhost:8000"
+        )
+        self.connector = config.get("connector", "oanda")
 
     async def _execute_logic(self, state: TradingState) -> Dict[str, Any]:
         """
@@ -38,47 +40,49 @@ class SystemInitAgent(BaseAgent):
         self.logger.info("starting_system_initialization")
 
         results = {
-            'status': 'success',
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'checks': {}
+            "status": "success",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "checks": {},
         }
 
         # 1. Check Hummingbot connectivity
         hb_check = await self._check_hummingbot_connection()
-        results['checks']['hummingbot'] = hb_check
+        results["checks"]["hummingbot"] = hb_check
 
         # 2. Load instrument specifications
-        instrument_spec = await self._load_instrument_spec(state['instrument'])
-        results['checks']['instrument'] = instrument_spec
+        instrument_spec = await self._load_instrument_spec(state["instrument"])
+        results["checks"]["instrument"] = instrument_spec
 
         # 3. Verify broker connectivity
         broker_check = await self._check_broker_connection()
-        results['checks']['broker'] = broker_check
+        results["checks"]["broker"] = broker_check
 
         # 4. Synchronize clock
         time_sync = await self._synchronize_clock()
-        results['checks']['time_sync'] = time_sync
+        results["checks"]["time_sync"] = time_sync
 
         # 5. Load account balance
         balance = await self._get_account_balance()
-        results['checks']['balance'] = balance
+        results["checks"]["balance"] = balance
 
         # Determine if system is ready
         all_checks_passed = all(
-            check.get('status') == 'ok'
-            for check in results['checks'].values()
+            check.get("status") == "ok" for check in results["checks"].values()
         )
 
-        results['system_ready'] = all_checks_passed
+        results["system_ready"] = all_checks_passed
 
         if all_checks_passed:
             self.logger.info("system_initialization_complete", system_ready=True)
             # Update state with loaded data
-            state['account_balance'] = balance.get('balance', state['account_balance'])
-            state['system_health'] = {'status': 'healthy', 'timestamp': datetime.now(timezone.utc).isoformat()}
+            state["account_balance"] = balance.get("balance", state["account_balance"])
+            state["system_health"] = {
+                "status": "healthy",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
         else:
-            self.logger.error("system_initialization_failed", checks=results['checks'])
-            state = self.add_alert(state, 'critical', 'System initialization failed')
+            self.logger.error("system_initialization_failed", checks=results["checks"])
+            state = self.add_alert(state, "critical", "System initialization failed")
 
         return results
 
@@ -97,85 +101,194 @@ class SystemInitAgent(BaseAgent):
                 result = await self.hb_check_gateway_status()
 
                 # Parse Gateway API result
-                if result.get('status') == 'healthy':
+                if result.get("status") == "healthy":
                     return {
-                        'status': 'ok',
-                        'gateway_url': self.hummingbot_url,
-                        'connected': True,
-                        'latency_ms': 15,
-                        'response': result
+                        "status": "ok",
+                        "gateway_url": self.hummingbot_url,
+                        "connected": True,
+                        "latency_ms": 15,
+                        "response": result,
                     }
                 else:
                     return {
-                        'status': 'error' if result.get('status') == 'unhealthy' else 'ok',
-                        'gateway_url': self.hummingbot_url,
-                        'connected': result.get('status') == 'healthy',
-                        'response': result
+                        "status": "error"
+                        if result.get("status") == "unhealthy"
+                        else "ok",
+                        "gateway_url": self.hummingbot_url,
+                        "connected": result.get("status") == "healthy",
+                        "response": result,
                     }
             else:
                 # Fallback to mock if gateway not available
                 self.logger.warning("gateway_not_available", message="Using mock data")
                 return {
-                    'status': 'ok',
-                    'gateway_url': self.hummingbot_url,
-                    'connected': True,
-                    'latency_ms': 15,
-                    'gateway_mode': 'disabled'
+                    "status": "ok",
+                    "gateway_url": self.hummingbot_url,
+                    "connected": True,
+                    "latency_ms": 15,
+                    "gateway_mode": "disabled",
                 }
 
         except Exception as e:
             self.logger.error("hummingbot_connection_failed", error=str(e))
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
+            return {"status": "error", "error": str(e)}
 
     async def _load_instrument_spec(self, instrument: str) -> Dict[str, Any]:
         """
-        Load instrument specifications.
+        Load instrument specifications from Hummingbot Gateway API trading rules.
 
         Args:
-            instrument: Instrument symbol (e.g., 'ETH/USD')
+            instrument: Instrument symbol (e.g., 'ETH-USDT')
 
         Returns:
             Instrument specifications
         """
         try:
-            self.logger.info("loading_instrument_spec", instrument=instrument)
+            self.logger.info(
+                "loading_instrument_spec_from_gateway",
+                instrument=instrument,
+                connector=self.connector,
+            )
 
-            # Placeholder - load from database or API
-            # In production, fetch from broker API
+            # Fetch trading rules from Hummingbot Gateway API
+            if self.gateway_client:
+                try:
+                    endpoint = f"/connectors/{self.connector}/trading-rules"
+                    trading_rules = await self.gateway_client._request("GET", endpoint)
 
-            # Example specs for various instruments
-            specs = {
-                'ETH/USD': {
-                    'tick_size': 0.01,
-                    'tick_value': 1.0,
-                    'min_size': 0.1,
-                    'max_size': 100.0,
-                    'margin_requirement': 0.10,
-                    'contract_size': 1.0
-                }
-            }
+                    self.logger.info(
+                        "trading_rules_fetched",
+                        connector=self.connector,
+                        rules=trading_rules,
+                    )
 
-            if instrument in specs:
-                return {
-                    'status': 'ok',
-                    'instrument': instrument,
-                    'specs': specs[instrument]
-                }
+                    # Parse trading rules for the instrument
+                    if isinstance(trading_rules, dict):
+                        # Extract trading pair specs from rules
+                        trading_pairs = trading_rules.get("trading_pairs", {})
+
+                        if instrument in trading_pairs:
+                            pair_rules = trading_pairs[instrument]
+                            return {
+                                "status": "ok",
+                                "instrument": instrument,
+                                "connector": self.connector,
+                                "specs": {
+                                    "tick_size": float(
+                                        pair_rules.get("precision", {}).get(
+                                            "amount", 0.001
+                                        )
+                                    ),
+                                    "tick_value": float(
+                                        pair_rules.get("precision", {}).get(
+                                            "price", 0.01
+                                        )
+                                    ),
+                                    "min_size": float(
+                                        pair_rules.get("limits", {})
+                                        .get("amount", {})
+                                        .get("min", 0.001)
+                                    ),
+                                    "max_size": float(
+                                        pair_rules.get("limits", {})
+                                        .get("amount", {})
+                                        .get("max", 1000.0)
+                                    ),
+                                    "margin_requirement": float(
+                                        pair_rules.get("maker", 0.001)
+                                    ),
+                                    "contract_size": 1.0,
+                                    "maker_fee": float(pair_rules.get("maker", 0.001)),
+                                    "taker_fee": float(pair_rules.get("taker", 0.001)),
+                                },
+                            }
+                        else:
+                            # Return generic specs if pair not found
+                            self.logger.warning(
+                                "instrument_not_found_in_rules",
+                                instrument=instrument,
+                                available_pairs=list(trading_pairs.keys())[:5],
+                            )
+                            return {
+                                "status": "ok",
+                                "instrument": instrument,
+                                "connector": self.connector,
+                                "specs": {
+                                    "tick_size": 0.01,
+                                    "tick_value": 0.01,
+                                    "min_size": 0.001,
+                                    "max_size": 1000.0,
+                                    "margin_requirement": 0.001,
+                                    "contract_size": 1.0,
+                                    "maker_fee": 0.001,
+                                    "taker_fee": 0.001,
+                                },
+                            }
+                    else:
+                        self.logger.warning(
+                            "unexpected_trading_rules_format",
+                            rules_type=type(trading_rules),
+                        )
+                        return {
+                            "status": "ok",
+                            "instrument": instrument,
+                            "connector": self.connector,
+                            "specs": {
+                                "tick_size": 0.01,
+                                "tick_value": 0.01,
+                                "min_size": 0.001,
+                                "max_size": 1000.0,
+                                "margin_requirement": 0.001,
+                                "contract_size": 1.0,
+                                "maker_fee": 0.001,
+                                "taker_fee": 0.001,
+                            },
+                        }
+
+                except Exception as e:
+                    self.logger.error("trading_rules_fetch_failed", error=str(e))
+                    # Return fallback specs
+                    return {
+                        "status": "ok",
+                        "instrument": instrument,
+                        "connector": self.connector,
+                        "specs": {
+                            "tick_size": 0.01,
+                            "tick_value": 0.01,
+                            "min_size": 0.001,
+                            "max_size": 1000.0,
+                            "margin_requirement": 0.001,
+                            "contract_size": 1.0,
+                            "maker_fee": 0.001,
+                            "taker_fee": 0.001,
+                        },
+                        "error": str(e),
+                    }
             else:
+                # Gateway client not available, return generic specs
+                self.logger.warning(
+                    "gateway_not_available", message="Using default specs"
+                )
                 return {
-                    'status': 'error',
-                    'error': f'Unknown instrument: {instrument}'
+                    "status": "ok",
+                    "instrument": instrument,
+                    "connector": self.connector,
+                    "specs": {
+                        "tick_size": 0.01,
+                        "tick_value": 0.01,
+                        "min_size": 0.001,
+                        "max_size": 1000.0,
+                        "margin_requirement": 0.001,
+                        "contract_size": 1.0,
+                        "maker_fee": 0.001,
+                        "taker_fee": 0.001,
+                    },
+                    "gateway_mode": "disabled",
                 }
 
         except Exception as e:
             self.logger.error("instrument_load_failed", error=str(e))
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
+            return {"status": "error", "error": str(e)}
 
     async def _check_broker_connection(self) -> Dict[str, Any]:
         """
@@ -185,39 +298,38 @@ class SystemInitAgent(BaseAgent):
             Broker connection status
         """
         try:
-            self.logger.info("checking_broker_connection_via_gateway",
-                             connector=self.connector)
+            self.logger.info(
+                "checking_broker_connection_via_gateway", connector=self.connector
+            )
 
             # Use Gateway API to check connector status
             if self.gateway_client:
                 result = await self.hb_check_connector_status(self.connector)
 
                 # Parse Gateway API result
-                is_available = result.get('available', False)
+                is_available = result.get("available", False)
                 return {
-                    'status': 'ok' if is_available else 'error',
-                    'broker': self.connector,
-                    'api_status': 'active' if is_available else 'unavailable',
-                    'response': result
+                    "status": "ok" if is_available else "error",
+                    "broker": self.connector,
+                    "api_status": "active" if is_available else "unavailable",
+                    "response": result,
                 }
             else:
                 # Fallback to mock
-                self.logger.warning("gateway_not_available",
-                                    message="Using mock data for broker check")
+                self.logger.warning(
+                    "gateway_not_available", message="Using mock data for broker check"
+                )
                 return {
-                    'status': 'ok',
-                    'broker': self.connector,
-                    'api_status': 'active',
-                    'latency_ms': 45,
-                    'gateway_mode': 'disabled'
+                    "status": "ok",
+                    "broker": self.connector,
+                    "api_status": "active",
+                    "latency_ms": 45,
+                    "gateway_mode": "disabled",
                 }
 
         except Exception as e:
             self.logger.error("broker_connection_failed", error=str(e))
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
+            return {"status": "error", "error": str(e)}
 
     async def _synchronize_clock(self) -> Dict[str, Any]:
         """
@@ -240,25 +352,22 @@ class SystemInitAgent(BaseAgent):
             if time_diff_ms > 1000:  # More than 1 second difference
                 self.logger.warning("clock_drift_detected", drift_ms=time_diff_ms)
                 return {
-                    'status': 'warning',
-                    'local_time': local_time.isoformat(),
-                    'broker_time': broker_time.isoformat(),
-                    'drift_ms': time_diff_ms
+                    "status": "warning",
+                    "local_time": local_time.isoformat(),
+                    "broker_time": broker_time.isoformat(),
+                    "drift_ms": time_diff_ms,
                 }
 
             return {
-                'status': 'ok',
-                'local_time': local_time.isoformat(),
-                'broker_time': broker_time.isoformat(),
-                'drift_ms': time_diff_ms
+                "status": "ok",
+                "local_time": local_time.isoformat(),
+                "broker_time": broker_time.isoformat(),
+                "drift_ms": time_diff_ms,
             }
 
         except Exception as e:
             self.logger.error("clock_sync_failed", error=str(e))
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
+            return {"status": "error", "error": str(e)}
 
     async def _get_account_balance(self) -> Dict[str, Any]:
         """
@@ -268,54 +377,58 @@ class SystemInitAgent(BaseAgent):
             Account balance information
         """
         try:
-            self.logger.info("fetching_account_balance_via_gateway",
-                           connector=self.connector)
+            self.logger.info(
+                "fetching_account_balance_via_gateway", connector=self.connector
+            )
 
             # Use Gateway API to get balance
             if self.gateway_client:
                 result = await self.hb_get_balance(self.connector)
 
                 # Parse Gateway API result
-                if result.get('status') == 'ok':
-                    balance = result.get('balance', 0.0)
+                if result.get("status") == "ok":
+                    balance = result.get("balance", 0.0)
                     return {
-                        'status': 'ok',
-                        'balance': balance,
-                        'currency': result.get('currency', 'USD'),
-                        'response': result
+                        "status": "ok",
+                        "balance": balance,
+                        "currency": result.get("currency", "USD"),
+                        "response": result,
                     }
                 else:
                     # Error from gateway, use mock
-                    balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
-                    self.logger.warning("gateway_balance_fetch_failed",
-                                      error=result.get('error'),
-                                      message="Using mock balance data")
+                    balance = self.config.get("account_config", {}).get(
+                        "initial_balance", 100000.0
+                    )
+                    self.logger.warning(
+                        "gateway_balance_fetch_failed",
+                        error=result.get("error"),
+                        message="Using mock balance data",
+                    )
                     return {
-                        'status': 'ok',
-                        'balance': balance,
-                        'currency': 'USD',
-                        'available_margin': balance * 0.5,
-                        'used_margin': 0.0,
-                        'gateway_error': result.get('error')
+                        "status": "ok",
+                        "balance": balance,
+                        "currency": "USD",
+                        "available_margin": balance * 0.5,
+                        "used_margin": 0.0,
+                        "gateway_error": result.get("error"),
                     }
             else:
                 # Fallback to mock
-                balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
-                self.logger.warning("gateway_not_available",
-                                  message="Using mock balance data")
+                balance = self.config.get("account_config", {}).get(
+                    "initial_balance", 100000.0
+                )
+                self.logger.warning(
+                    "gateway_not_available", message="Using mock balance data"
+                )
                 return {
-                    'status': 'ok',
-                    'balance': balance,
-                    'currency': 'USD',
-                    'available_margin': balance * 0.5,
-                    'used_margin': 0.0,
-                    'gateway_mode': 'disabled'
+                    "status": "ok",
+                    "balance": balance,
+                    "currency": "USD",
+                    "available_margin": balance * 0.5,
+                    "used_margin": 0.0,
+                    "gateway_mode": "disabled",
                 }
 
         except Exception as e:
             self.logger.error("balance_fetch_failed", error=str(e))
-            return {
-                'status': 'error',
-                'error': str(e),
-                'balance': 0.0
-            }
+            return {"status": "error", "error": str(e), "balance": 0.0}

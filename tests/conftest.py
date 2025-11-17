@@ -18,7 +18,7 @@ def test_config():
         'model': 'claude-sonnet-4-20250514',
         'session_config': {
             'market': 'crypto',
-            'instrument': 'ETH/USD',
+            'instrument': 'ETH-USDT',
             'session_start_time': '09:30:00',
             'duration_hours': 3
         },

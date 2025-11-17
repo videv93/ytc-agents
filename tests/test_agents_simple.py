@@ -15,7 +15,7 @@ def test_config():
         'model': 'claude-sonnet-4-20250514',
         'session_config': {
             'market': 'crypto',
-            'instrument': 'ETH/USD',
+            'instrument': 'ETH-USDT',
             'session_start_time': '09:30:00',
             'duration_hours': 3
         },
@@ -48,7 +48,7 @@ def base_trading_state():
         'max_session_risk_pct': 3.0,
         'risk_per_trade_pct': 1.0,
         'market': 'crypto',
-        'instrument': 'ETH/USD',
+        'instrument': 'ETH-USDT',
         'market_structure': {},
         'trend': {},
         'strength_weakness': {},
@@ -73,7 +73,7 @@ class TestEconomicCalendarAgent:
         from agents.economic_calendar import EconomicCalendarAgent
         
         agent = EconomicCalendarAgent('economic_calendar', test_config)
-        events = await agent._fetch_news_events('ETH/USD', hours_ahead=24)
+        events = await agent._fetch_news_events('ETH-USDT', hours_ahead=24)
         
         # Crypto trading should have empty events
         assert events == []
@@ -131,7 +131,7 @@ class TestLoggingAuditAgent:
             'active_trades': [
                 {
                     'id': 'trade-001',
-                    'instrument': 'ETH/USD',
+                    'instrument': 'ETH-USDT',
                     'type': 'long',
                     'entry_price': 2000.0,
                     'quantity': 1.0,
@@ -145,15 +145,15 @@ class TestLoggingAuditAgent:
         
         assert len(events) == 1
         assert events[0]['trade_id'] == 'trade-001'
-        assert events[0]['instrument'] == 'ETH/USD'
+        assert events[0]['instrument'] == 'ETH-USDT'
 
 
 class TestTrendDefinitionAgent:
     """Tests for Trend Definition Agent"""
 
     def test_get_current_price_mock(self):
-         """Test mock price for ETH/USD"""
-         # Mock price for ETH/USD should be reasonable
+         """Test mock price for ETH-USDT"""
+         # Mock price for ETH-USDT should be reasonable
          eth_price = 2250.0  # Example price
          assert eth_price > 1000  # Should be plausible
 

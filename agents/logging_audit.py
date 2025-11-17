@@ -79,7 +79,7 @@ class LoggingAuditAgent(BaseAgent):
                 session = Session(
                     session_id=session_id,
                     market=state.get('market', 'forex'),
-                    instrument=state.get('instrument', 'ETH/USD'),
+                    instrument=state.get('instrument', 'ETH-USDT'),
                     initial_balance=state.get('initial_balance', 100000.0),
                     status='active'
                 )

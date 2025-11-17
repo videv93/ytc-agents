@@ -77,7 +77,7 @@ class MasterOrchestrator:
 
             # Market State
             'market': session_config.get('market', 'forex'),
-            'instrument': session_config.get('instrument', 'ETH/USD'),
+            'instrument': session_config.get('instrument', 'ETH-USDT'),
             'market_structure': {},
             'trend': {},
             'strength_weakness': {},

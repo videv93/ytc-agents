@@ -1,7 +1,7 @@
 # YTC Trading System - Session Configuration
 
 market: crypto
-instrument: ETH/USD
+instrument: ETH-USDT
 
 # Timeframes for multi-timeframe analysis
 timeframes:
