@@ -1,6 +1,5 @@
 {
   "python_version": "3.11",
-  "dockerfile_lines": [],
   "graphs": {
     "ytc_trading_workflow": {
       "path": "main:create_app",
@@ -8,5 +7,14 @@
     }
   },
   "env": ".env",
-  "dependencies": ["anthropic", "langgraph", "pydantic", "sqlalchemy"]
+  "dependencies": [
+    "anthropic",
+    "langgraph",
+    "pydantic",
+    "sqlalchemy",
+    "structlog",
+    "python-dotenv",
+    "pyyaml",
+    "scipy"
+  ]
 }
