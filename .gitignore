@@ -79,3 +79,4 @@ docker-compose.override.yml
 # OS
 Thumbs.db
 .Trash-*
+.langgraph_api
