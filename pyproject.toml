@@ -8,8 +8,8 @@ version = "1.0.0"
 description = "YTC Automated Trading System with Multi-Agent Architecture"
 authors = [{name = "YTC Trading Team"}]
 readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "MIT"}
+requires-python = ">=3.11"
+license = "MIT"
 keywords = ["trading", "agents", "ytc", "price-action", "automation"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -19,7 +19,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "langgraph>=0.0.40",
+    "langgraph>=0.1.0",
+    "langgraph-cli>=0.1.0",
     "anthropic>=0.18.1",
     "pydantic>=2.5.0",
     "sqlalchemy>=2.0.0",
@@ -27,6 +28,9 @@ dependencies = [
     "pandas>=2.1.4",
     "structlog>=23.2.0",
 ]
+
+[tool.setuptools]
+packages = ["agents", "skills", "tools", "database"]
 
 [project.optional-dependencies]
 dev = [

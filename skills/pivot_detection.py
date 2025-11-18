@@ -3,12 +3,25 @@ Pivot Detection Skill
 YTC swing point detection for market structure analysis
 """
 
+from __future__ import annotations
 from typing import Dict, List, Any
-import pandas as pd
-import numpy as np
 import structlog
 
+# Lazy imports for pandas/numpy to avoid initialization issues
+pd = None
+np = None
+
 logger = structlog.get_logger()
+
+
+def _ensure_pandas():
+    """Lazy load pandas and numpy on first use."""
+    global pd, np
+    if pd is None:
+        import pandas as _pd
+        import numpy as _np
+        pd = _pd
+        np = _np
 
 
 class PivotDetectionSkill:
@@ -24,6 +37,7 @@ class PivotDetectionSkill:
         Args:
             min_bars: Minimum bars on each side for swing point validation
         """
+        _ensure_pandas()  # Ensure pandas/numpy are loaded
         self.min_bars = min_bars
         self.logger = logger.bind(skill="pivot_detection")
 

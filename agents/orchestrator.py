@@ -14,6 +14,22 @@ from agents.base import TradingState
 
 logger = structlog.get_logger()
 
+
+class LazyAgent:
+    """Lazy wrapper for agents that defers initialization until first use."""
+    
+    def __init__(self, agent_class, name: str, config: Dict[str, Any]):
+        self.agent_class = agent_class
+        self.name = name
+        self.config = config
+        self._instance = None
+    
+    def __getattr__(self, attr):
+        """Lazily initialize agent on first attribute access."""
+        if self._instance is None:
+            self._instance = self.agent_class(self.name, self.config)
+        return getattr(self._instance, attr)
+
 # Configure LangSmith tracing (optional)
 if os.getenv('LANGSMITH_API_KEY'):
     os.environ['LANGCHAIN_TRACING_V2'] = 'true'
@@ -125,6 +141,12 @@ class MasterOrchestrator:
         Returns:
             Account balance (uses fallback during initialization)
         """
+        # Skip balance fetching in dev mode (langgraph dev)
+        if os.getenv('LANGGRAPH_DEV_MODE', '').lower() == 'true':
+            fallback_balance = self.config.get('account_config', {}).get('initial_balance', 100000.0)
+            self.logger.info("dev_mode_using_fallback_balance", balance=fallback_balance)
+            return fallback_balance
+        
         try:
             # Check if there's an active event loop
             try:
@@ -204,25 +226,26 @@ class MasterOrchestrator:
         from agents.contingency import ContingencyManagementAgent
         from agents.logging_audit import LoggingAuditAgent
 
-        # Initialize all agents
+        # Initialize all agents with lazy loading
+        # This defers pandas import and other heavy initialization until agents are actually used
         self.agents = {
-            'system_init': SystemInitAgent('system_init', self.config),
-            'risk_mgmt': RiskManagementAgent('risk_mgmt', self.config),
-            'market_structure': MarketStructureAgent('market_structure', self.config),
-            'economic_calendar': EconomicCalendarAgent('economic_calendar', self.config),
-            'trend_definition': TrendDefinitionAgent('trend_definition', self.config),
-            'strength_weakness': StrengthWeaknessAgent('strength_weakness', self.config),
-            'setup_scanner': SetupScannerAgent('setup_scanner', self.config),
-            'entry_execution': EntryExecutionAgent('entry_execution', self.config),
-            'trade_management': TradeManagementAgent('trade_management', self.config),
-            'exit_execution': ExitExecutionAgent('exit_execution', self.config),
-            'monitoring': RealTimeMonitoringAgent('monitoring', self.config),
-            'session_review': SessionReviewAgent('session_review', self.config),
-            'performance_analytics': PerformanceAnalyticsAgent('performance_analytics', self.config),
-            'learning_optimization': LearningOptimizationAgent('learning_optimization', self.config),
-            'next_session_prep': NextSessionPrepAgent('next_session_prep', self.config),
-            'contingency': ContingencyManagementAgent('contingency', self.config),
-            'logging_audit': LoggingAuditAgent('logging_audit', self.config),
+            'system_init': LazyAgent(SystemInitAgent, 'system_init', self.config),
+            'risk_mgmt': LazyAgent(RiskManagementAgent, 'risk_mgmt', self.config),
+            'market_structure': LazyAgent(MarketStructureAgent, 'market_structure', self.config),
+            'economic_calendar': LazyAgent(EconomicCalendarAgent, 'economic_calendar', self.config),
+            'trend_definition': LazyAgent(TrendDefinitionAgent, 'trend_definition', self.config),
+            'strength_weakness': LazyAgent(StrengthWeaknessAgent, 'strength_weakness', self.config),
+            'setup_scanner': LazyAgent(SetupScannerAgent, 'setup_scanner', self.config),
+            'entry_execution': LazyAgent(EntryExecutionAgent, 'entry_execution', self.config),
+            'trade_management': LazyAgent(TradeManagementAgent, 'trade_management', self.config),
+            'exit_execution': LazyAgent(ExitExecutionAgent, 'exit_execution', self.config),
+            'monitoring': LazyAgent(RealTimeMonitoringAgent, 'monitoring', self.config),
+            'session_review': LazyAgent(SessionReviewAgent, 'session_review', self.config),
+            'performance_analytics': LazyAgent(PerformanceAnalyticsAgent, 'performance_analytics', self.config),
+            'learning_optimization': LazyAgent(LearningOptimizationAgent, 'learning_optimization', self.config),
+            'next_session_prep': LazyAgent(NextSessionPrepAgent, 'next_session_prep', self.config),
+            'contingency': LazyAgent(ContingencyManagementAgent, 'contingency', self.config),
+            'logging_audit': LazyAgent(LoggingAuditAgent, 'logging_audit', self.config),
         }
 
         # PRE-MARKET PHASE NODES
@@ -350,11 +373,14 @@ class MasterOrchestrator:
         )
 
         # Compile the workflow
-        compiled_workflow = workflow.compile()
+        # Enable debug mode if LANGGRAPH_DEV_MODE is set
+        debug_mode = os.getenv('LANGGRAPH_DEV_MODE', '').lower() == 'true'
+        compiled_workflow = workflow.compile(debug=debug_mode)
 
         self.logger.info("workflow_built",
                         total_agents=len(self.agents),
-                        nodes=len(workflow.nodes))
+                        nodes=len(workflow.nodes),
+                        debug_mode=debug_mode)
 
         return compiled_workflow
 

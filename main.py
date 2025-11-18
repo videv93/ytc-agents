@@ -17,13 +17,22 @@ from agents.orchestrator import MasterOrchestrator
 from database.connection import DatabaseManager
 
 # Configure structured logging
+# Use ConsoleRenderer for better visibility during development
+# Switch to JSONRenderer for production
+use_json_logging = os.getenv('LOG_FORMAT', 'text').lower() == 'json'
+
+if use_json_logging:
+    log_processor = structlog.processors.JSONRenderer()
+else:
+    log_processor = structlog.dev.ConsoleRenderer()
+
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_log_level,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
-        structlog.processors.JSONRenderer()
+        log_processor
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -31,6 +40,86 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
+
+
+def _load_config_blocking() -> Dict[str, Any]:
+    """
+    Load configuration from YAML files and environment variables.
+    This is called at module import time to avoid blocking in async context.
+    
+    Returns:
+        Complete configuration dictionary
+    """
+    config = {
+        'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY'),
+        'model': os.getenv('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
+        'max_tokens': 4096,
+        'hummingbot_gateway_url': os.getenv('HUMMINGBOT_GATEWAY_URL', 'http://localhost:8000'),
+        'hummingbot_username': os.getenv('HUMMINGBOT_USERNAME'),
+        'hummingbot_password': os.getenv('HUMMINGBOT_PASSWORD'),
+        'connector': os.getenv('CONNECTOR', 'binance_perpetual_testnet'),
+        'account_config': {
+            'initial_balance': float(os.getenv('INITIAL_BALANCE', '100000.0'))
+        }
+    }
+    
+    # Load session configuration
+    session_config_path = 'config/session_config.yaml'
+    try:
+        if os.path.exists(session_config_path):
+            with open(session_config_path, 'r') as f:
+                config['session_config'] = yaml.safe_load(f)
+        else:
+            raise FileNotFoundError()
+    except Exception:
+        config['session_config'] = {
+            'market': os.getenv('TRADING_MARKET', 'crypto'),
+            'instrument': os.getenv('TRADING_INSTRUMENT', 'ETH-USDT'),
+            'session_start_time': os.getenv('SESSION_START_TIME', '09:30:00'),
+            'duration_hours': int(os.getenv('SESSION_DURATION_HOURS', '3'))
+        }
+    
+    # Load risk configuration
+    risk_config_path = 'config/risk_config.yaml'
+    try:
+        if os.path.exists(risk_config_path):
+            with open(risk_config_path, 'r') as f:
+                config['risk_config'] = yaml.safe_load(f)
+        else:
+            raise FileNotFoundError()
+    except Exception:
+        config['risk_config'] = {
+            'risk_per_trade_pct': float(os.getenv('RISK_PER_TRADE_PCT', '1.0')),
+            'max_session_risk_pct': float(os.getenv('MAX_SESSION_RISK_PCT', '3.0')),
+            'max_positions': int(os.getenv('MAX_POSITIONS', '3')),
+            'max_total_exposure_pct': float(os.getenv('MAX_TOTAL_EXPOSURE_PCT', '3.0')),
+            'consecutive_loss_limit': int(os.getenv('CONSECUTIVE_LOSS_LIMIT', '5'))
+        }
+    
+    return config
+
+
+# Load config at module import time (blocking I/O outside async context)
+_cached_config = _load_config_blocking()
+
+
+def create_app():
+    """
+    Create the LangGraph application for LangGraph dev.
+    Returns the compiled workflow graph.
+    Uses pre-loaded config to avoid blocking I/O in async context.
+    
+    Returns:
+        Compiled StateGraph workflow
+    """
+    # Set dev mode flag for orchestrator
+    os.environ['LANGGRAPH_DEV_MODE'] = 'true'
+    
+    # Load orchestrator with cached config
+    from agents.orchestrator import MasterOrchestrator
+    
+    orchestrator = MasterOrchestrator(_cached_config)
+    return orchestrator.workflow
 
 
 class YTCTradingSystem:
@@ -180,47 +269,31 @@ class YTCTradingSystem:
             raise
 
     async def run(self) -> None:
-        """Main run loop using workflow streaming"""
+        """Main run loop - invoke workflow and monitor state"""
         try:
             self.logger.info("entering_main_loop")
-
-            # Stream the workflow instead of using ainvoke
-            # This gives us updates as workflow progresses
-            async for event in self.orchestrator.workflow.astream(
+            
+            # Run the entire workflow
+            # The workflow will execute all phases: pre_market -> session_open -> active_trading -> post_market -> shutdown
+            self.logger.info("invoking_workflow", phase=self.orchestrator.session_state['phase'])
+            
+            final_state = await self.orchestrator.workflow.ainvoke(
                 self.orchestrator.session_state,
-                config={"recursion_limit": 500}
-            ):
-                # Check for shutdown signal
-                if self.shutdown_event.is_set():
-                    self.logger.info("shutdown_signal_received_halting_workflow")
-                    break
-                
-                # Update orchestrator state with latest from workflow
-                if isinstance(event, dict):
-                    # Update state from workflow event
-                    for node_name, node_state in event.items():
-                        if isinstance(node_state, dict) and 'phase' in node_state:
-                            self.orchestrator.session_state = node_state
-                            current_phase = node_state.get('phase', 'unknown')
-                            
-                            # Log phase transitions
-                            if current_phase != self.orchestrator.session_state.get('phase'):
-                                self.logger.info("phase_transition",
-                                              from_phase=self.orchestrator.session_state.get('phase'),
-                                              to_phase=current_phase)
-                            
-                            # Small delay based on phase
-                            if current_phase == 'active_trading':
-                                await asyncio.sleep(0.1)  # Fast loop
-                            else:
-                                await asyncio.sleep(0.5)  # Slower loop
-                                
-            self.logger.info("workflow_completed")
+                config={"recursion_limit": 1000}
+            )
+            
+            # Update our state with final state
+            self.orchestrator.session_state = final_state
+            
+            self.logger.info("workflow_completed", 
+                           final_phase=final_state.get('phase'),
+                           pnl=final_state.get('session_pnl'),
+                           trades=len(final_state.get('trades_today', [])))
 
         except asyncio.CancelledError:
             self.logger.info("main_loop_cancelled")
         except Exception as e:
-            self.logger.error("main_loop_error", error=str(e))
+            self.logger.error("main_loop_error", error=str(e), exc_info=True)
             raise
 
     async def shutdown(self) -> None:
@@ -275,14 +348,14 @@ async def main():
 
 if __name__ == "__main__":
     # Print banner
-    print("=" * 70)
-    print("YTC Automated Trading System")
-    print("Multi-Agent Architecture with LangGraph and Claude")
-    print("=" * 70)
-    print()
+    print("=" * 70, flush=True)
+    print("YTC Automated Trading System", flush=True)
+    print("Multi-Agent Architecture with LangGraph and Claude", flush=True)
+    print("=" * 70, flush=True)
+    print(flush=True)
 
     # Run the system
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\nShutdown complete.")
+        print("\n\nShutdown complete.", flush=True)
